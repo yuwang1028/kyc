@@ -1,0 +1,23 @@
+# Secrets & local env
+backend/.env
+frontend/.env.local
+frontend/.env*.local
+
+# Python
+backend/.venv/
+**/__pycache__/
+*.pyc
+backend/kyc.db
+backend/kyc.db-journal
+backend/uploads/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.log

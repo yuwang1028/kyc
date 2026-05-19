@@ -1,0 +1,12 @@
+{
+  "version": "v1-us-business-onboarding",
+  "customer_type": "business",
+  "required_documents": ["certificate_of_incorporation", "tax_id_proof", "ownership_chart"],
+  "risk_rules": [
+    { "code": "HR_COUNTRY_EXPOSURE", "score": 40 },
+    { "code": "PEP_TRUE_MATCH", "score": 60 },
+    { "code": "OWNERSHIP_COMPLEX", "score": 30 }
+  ],
+  "edd_triggers": ["PEP_TRUE_MATCH", "SANCTIONS_TRUE_MATCH", "OWNERSHIP_UNRESOLVED"],
+  "review_cycles": { "low": 36, "medium": 12, "high": 6 }
+}

@@ -1,0 +1,7 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+kyc.db
+kyc.db-journal
+uploads/
