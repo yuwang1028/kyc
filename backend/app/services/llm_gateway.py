@@ -1,11 +1,11 @@
 """
-LLM Gateway: Gemini on Vertex AI via the unified Google Gen AI SDK (`google.genai`).
+LLM Gateway: local Ollama runtime (Qwen 2.5 7B by default).
 
-Auth: Application Default Credentials (ADC) or GOOGLE_APPLICATION_CREDENTIALS with
-Vertex AI User on the target project.
+No API key required — Ollama runs entirely on-prem.
 
-Env: VERTEX_PROJECT_ID, VERTEX_LOCATION, VERTEX_MODEL_{LITE,FLASH,PRO}.
-Model names must match Vertex / Model Garden for the chosen region.
+Env: OLLAMA_BASE_URL (default http://localhost:11434), OLLAMA_MODEL (default qwen2.5:7b).
+All model tiers (lite/flash/pro) route to the same local model; the tier field is kept for
+auditability and future multi-model routing.
 """
 
 from __future__ import annotations
@@ -16,13 +16,14 @@ import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
+import httpx
+
 from app.config import settings
 from app.services.llm_tasks import ModelTier, tier_for_task
 
 logger = logging.getLogger(__name__)
 
-_genai_client: Any | None = None
-_genai_client_key: tuple[str, str] | None = None
+_OLLAMA_TIMEOUT = 180.0  # seconds — local 7B inference can take 10-30s per call
 
 
 @dataclass
@@ -35,57 +36,28 @@ class LLMGatewayResult:
     raw_finish_reason: Optional[str] = None
 
 
-def _get_genai_client(project: str, location: str) -> Any:
-    global _genai_client, _genai_client_key
-    key = (project, location)
-    if _genai_client is not None and _genai_client_key == key:
-        return _genai_client
-
-    from google import genai
-    from google.genai import types
-
-    _genai_client = genai.Client(
-        vertexai=True,
-        project=project,
-        location=location,
-        http_options=types.HttpOptions(api_version="v1"),
-    )
-    _genai_client_key = key
-    logger.info("Google Gen AI client (Vertex) ready project=%s location=%s", project, location)
-    return _genai_client
-
-
 class LLMGateway:
-    """Maps task_kind to tier, then calls Vertex Gemini through `google.genai`."""
+    """Routes every task_kind to the single local Ollama model."""
 
     def __init__(self) -> None:
-        self._project = settings.vertex_project_id
-        self._location = settings.vertex_location
-        self._models = {
-            ModelTier.LITE: settings.vertex_model_lite,
-            ModelTier.FLASH: settings.vertex_model_flash,
-            ModelTier.PRO: settings.vertex_model_pro,
-        }
+        self._base_url = settings.ollama_base_url.rstrip("/")
+        self._model = settings.ollama_model
 
     @property
     def enabled(self) -> bool:
-        return bool(self._project and self._location)
+        return bool(self._base_url and self._model)
 
     def meta(self) -> dict[str, Any]:
-        """Safe to expose: no secrets."""
         return {
-            "vertex_configured": self.enabled,
-            "sdk": "google-genai",
-            "genai_api_version": "v1",
-            "location": self._location if self.enabled else None,
-            "models": {
-                "lite": bool(self._models[ModelTier.LITE]),
-                "flash": bool(self._models[ModelTier.FLASH]),
-                "pro": bool(self._models[ModelTier.PRO]),
-            },
+            "runtime": "ollama",
+            "ollama_configured": self.enabled,
+            "base_url": self._base_url if self.enabled else None,
+            "model": self._model if self.enabled else None,
+            "models": {"lite": True, "flash": True, "pro": True},
             "model_ids_preview": {
-                k.value: (v[:48] + "...") if v and len(v) > 48 else v
-                for k, v in self._models.items()
+                "lite": self._model,
+                "flash": self._model,
+                "pro": self._model,
             },
         }
 
@@ -93,13 +65,11 @@ class LLMGateway:
         self, task_kind: str, tier_override: Optional[ModelTier] = None
     ) -> tuple[ModelTier, str]:
         tier = tier_override or tier_for_task(task_kind)
-        model_id = self._models.get(tier) or ""
-        if not model_id:
+        if not self._model:
             raise RuntimeError(
-                f"No Vertex model configured for tier {tier.value}. "
-                f"Set VERTEX_MODEL_{tier.value.upper()} in .env"
+                "No Ollama model configured. Set OLLAMA_MODEL in .env"
             )
-        return tier, model_id
+        return tier, self._model
 
     def generate(
         self,
@@ -114,42 +84,51 @@ class LLMGateway:
     ) -> LLMGatewayResult:
         if not self.enabled:
             raise RuntimeError(
-                "Vertex AI is not configured. Set VERTEX_PROJECT_ID and VERTEX_LOCATION "
-                "(and model env vars) in backend/.env"
+                "Ollama is not configured. Set OLLAMA_BASE_URL and OLLAMA_MODEL in .env, "
+                "then run: ollama serve && ollama pull qwen2.5:7b"
             )
 
-        from google.genai import types
-
-        client = _get_genai_client(self._project, self._location)
         tier, model_id = self.resolve_model_id(task_kind, tier_override=tier_override)
 
-        cfg_kwargs: dict[str, Any] = {
-            "temperature": temperature,
-            "max_output_tokens": max_output_tokens,
-        }
+        messages: list[dict[str, str]] = []
         if system_instruction:
-            cfg_kwargs["system_instruction"] = system_instruction
-        if json_mode:
-            cfg_kwargs["response_mime_type"] = "application/json"
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": user_prompt})
 
-        config = types.GenerateContentConfig(**cfg_kwargs)
+        payload: dict[str, Any] = {
+            "model": model_id,
+            "messages": messages,
+            "stream": False,
+            "temperature": temperature,
+            "max_tokens": max_output_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
         t0 = time.perf_counter()
-        response = client.models.generate_content(
-            model=model_id,
-            contents=user_prompt,
-            config=config,
-        )
+        try:
+            with httpx.Client(timeout=_OLLAMA_TIMEOUT) as client:
+                resp = client.post(
+                    f"{self._base_url}/v1/chat/completions",
+                    json=payload,
+                )
+                resp.raise_for_status()
+        except httpx.ConnectError as e:
+            raise RuntimeError(
+                f"Cannot connect to Ollama at {self._base_url}. "
+                "Is Ollama running? Try: ollama serve"
+            ) from e
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
-        text = (getattr(response, "text", None) or "").strip()
-        finish: Optional[str] = None
-        try:
-            cands = getattr(response, "candidates", None) or []
-            if cands and getattr(cands[0], "finish_reason", None) is not None:
-                finish = str(cands[0].finish_reason)
-        except Exception:
-            pass
+        data = resp.json()
+        choice = data["choices"][0]
+        text = (choice["message"].get("content") or "").strip()
+        finish = choice.get("finish_reason")
+
+        logger.info(
+            "ollama task=%s model=%s latency=%.0fms finish=%s",
+            task_kind, model_id, latency_ms, finish,
+        )
 
         return LLMGatewayResult(
             text=text,
@@ -179,10 +158,19 @@ class LLMGateway:
             max_output_tokens=max_output_tokens,
             tier_override=tier_override,
         )
+        text = raw.text
+        # Strip markdown code fences that some models emit despite json_mode
+        if text.startswith("```"):
+            lines = text.splitlines()
+            start = 1  # skip ```json or ```
+            end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
+            text = "\n".join(lines[start:end])
         try:
-            parsed: dict[str, Any] = json.loads(raw.text)
+            parsed: dict[str, Any] = json.loads(text)
         except json.JSONDecodeError as e:
-            raise ValueError(f"LLM returned invalid JSON: {e}") from e
+            raise ValueError(
+                f"LLM returned invalid JSON: {e}\nRaw output: {raw.text[:300]}"
+            ) from e
         return parsed, raw
 
 
@@ -196,8 +184,8 @@ def get_llm_gateway() -> LLMGateway:
     return _gateway
 
 
-def get_vertex_genai_client() -> Any:
-    """Shared `google.genai` client for Vertex (same ADC as LLMGateway)."""
-    if not settings.vertex_project_id or not settings.vertex_location:
-        raise RuntimeError("Vertex AI is not configured (VERTEX_PROJECT_ID / VERTEX_LOCATION).")
-    return _get_genai_client(settings.vertex_project_id, settings.vertex_location)
+def get_ollama_http_client() -> httpx.Client:
+    """Shared httpx client for direct Ollama calls (agent loop tool use)."""
+    if not settings.ollama_base_url:
+        raise RuntimeError("Ollama is not configured (OLLAMA_BASE_URL).")
+    return httpx.Client(timeout=_OLLAMA_TIMEOUT)

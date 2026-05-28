@@ -28,12 +28,10 @@ class Settings(BaseModel):
         if origin.strip()
     ]
 
-    # Vertex AI (Gemini) — use ADC or GOOGLE_APPLICATION_CREDENTIALS
-    vertex_project_id: str | None = os.getenv("VERTEX_PROJECT_ID") or None
-    vertex_location: str = os.getenv("VERTEX_LOCATION", "us-central1")
-    vertex_model_lite: str = os.getenv("VERTEX_MODEL_LITE", "")
-    vertex_model_flash: str = os.getenv("VERTEX_MODEL_FLASH", "")
-    vertex_model_pro: str = os.getenv("VERTEX_MODEL_PRO", "")
+    # Ollama (local model runtime) — no API key needed
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+
     llm_gateway_admin_key: str | None = os.getenv("LLM_GATEWAY_ADMIN_KEY") or None
 
     upload_dir_name: str = os.getenv("UPLOAD_DIR", "uploads")

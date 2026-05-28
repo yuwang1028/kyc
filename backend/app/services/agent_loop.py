@@ -1,62 +1,47 @@
 """
-ReAct-style agent loop: Gemini proposes function calls; we execute KYC tools and feed results back.
+ReAct-style agent loop: Qwen 2.5 7B (via Ollama) proposes tool calls; we execute KYC tools
+and feed results back until the model stops calling tools or max_turns is hit.
 
-Same structural pattern as a generic coding agent (e.g. Anthropic `stop_reason == "tool_use"`):
-call the LLM with tools, append the model turn, and if it requested tools, execute them and append
-tool results to the conversation until the model returns text without further tool calls (or
-`max_turns` is hit). Manual execution (`automatic_function_calling` off) keeps every tool call
-auditable.
+Uses Ollama's OpenAI-compatible endpoint (/v1/chat/completions) with the `tools` parameter.
+Manual tool execution keeps every call auditable. Same structural pattern as the Claude/Gemini
+agent loop: append model turn → execute tools → append tool results → repeat.
 
-Tool execution is delegated to `execute_kyc_tool` → `KYC_TOOL_HANDLERS[name]` (dispatch map in
-`agent_tools`).
-
-Planning (s03_todo_write): a per-run `TodoManager` backs the `todo` tool. If the model issues tool
-calls for three consecutive rounds without calling `todo`, we inject a short user reminder so it
-updates progress (same idea as `rounds_since_todo >= 3` in the harness).
+Planning: a per-run TodoManager backs the `todo` tool. After TODO_NAG_AFTER_ROUNDS consecutive
+tool rounds without a `todo` call we inject a reminder.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
-from google.genai import types
+import httpx
 from sqlmodel import Session
 
+from app.config import settings
 from app.models import Case
 from app.services.agent_todo import TodoManager
-from app.services.agent_tools import AgentToolContext, execute_kyc_tool, kyc_case_toolset
-from app.services.llm_gateway import get_llm_gateway, get_vertex_genai_client
+from app.services.agent_tools import AgentToolContext, execute_kyc_tool, kyc_tools_as_openai
+from app.services.llm_gateway import get_llm_gateway
 
 logger = logging.getLogger(__name__)
 
-# Match s03 harness: nudge after this many consecutive tool rounds without `todo`.
 TODO_NAG_AFTER_ROUNDS = 3
+_OLLAMA_TIMEOUT = 180.0
 
 _TODO_NAG_TEXT = (
     "<reminder>Update your todos with the todo tool to track multi-step progress.</reminder>"
 )
 
-
-def _extract_function_calls(response: Any) -> list[Any]:
-    """Prefer SDK `response.function_calls`; fall back to parsing candidate parts."""
-    raw = getattr(response, "function_calls", None)
-    if raw:
-        return list(raw)
-    cands = getattr(response, "candidates", None) or []
-    if not cands:
-        return []
-    content = getattr(cands[0], "content", None)
-    if not content:
-        return []
-    out: list[Any] = []
-    for part in getattr(content, "parts", None) or []:
-        fc = getattr(part, "function_call", None)
-        if fc is not None:
-            out.append(fc)
-    return out
+_SYSTEM = (
+    "You are a KYC analyst assistant. For multi-step goals, use the todo tool first to plan, "
+    "then set one item in_progress before working on it and completed when done. "
+    "Use the case tools to gather facts; do not invent screening or document details. "
+    "The active case is fixed; case tools do not accept a case_id parameter."
+)
 
 
 @dataclass
@@ -74,7 +59,6 @@ class AgentLoopResult:
     steps: list[AgentLoopStep] = field(default_factory=list)
     model_rounds: int = 0
     stopped_reason: str = ""
-    # Snapshot when the run ends (empty if the model never called `todo`).
     todos_final: list[dict[str, Any]] = field(default_factory=list)
     todo_reminders_injected: int = 0
 
@@ -93,11 +77,14 @@ def run_kyc_case_agent_loop(
 
     gw = get_llm_gateway()
     if not gw.enabled:
-        raise RuntimeError("Vertex AI is not configured.")
+        raise RuntimeError(
+            "Ollama is not configured. Set OLLAMA_BASE_URL / OLLAMA_MODEL in .env "
+            "and run: ollama serve && ollama pull qwen2.5:7b"
+        )
     _, model_id = gw.resolve_model_id("kyc_agent_loop")
 
-    client = get_vertex_genai_client()
-    tool = kyc_case_toolset()
+    base_url = settings.ollama_base_url.rstrip("/")
+    tools = kyc_tools_as_openai()
     todo_manager = TodoManager()
     tool_ctx = AgentToolContext(
         session=session,
@@ -106,16 +93,14 @@ def run_kyc_case_agent_loop(
         todo_manager=todo_manager,
     )
 
-    system = (
-        "You are a KYC analyst assistant. For multi-step goals, use the todo tool first to plan, "
-        "then set one item in_progress before working on it and completed when done. "
-        "Use the case tools to gather facts; do not invent screening or document details. "
-        "The active case is fixed; case tools do not accept a case_id parameter."
-    )
-
-    user_text = f"User goal:\n{goal.strip()}\n\nActive case_id (reference only): {case_id}"
-    contents: list[Any] = [
-        types.Content(role="user", parts=[types.Part.from_text(text=user_text)]),
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _SYSTEM},
+        {
+            "role": "user",
+            "content": (
+                f"User goal:\n{goal.strip()}\n\nActive case_id (reference only): {case_id}"
+            ),
+        },
     ]
 
     steps: list[AgentLoopStep] = []
@@ -125,75 +110,92 @@ def run_kyc_case_agent_loop(
     rounds_since_todo = 0
     todo_reminders_injected = 0
 
-    config = types.GenerateContentConfig(
-        temperature=temperature,
-        max_output_tokens=4096,
-        system_instruction=system,
-        tools=[tool],
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-        tool_config=types.ToolConfig(
-            function_calling_config=types.FunctionCallingConfig(mode="AUTO"),
-        ),
-    )
+    with httpx.Client(timeout=_OLLAMA_TIMEOUT) as client:
+        for turn in range(max_turns):
+            model_rounds += 1
 
-    for turn in range(max_turns):
-        model_rounds += 1
-        response = client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=config,
-        )
+            resp = client.post(
+                f"{base_url}/v1/chat/completions",
+                json={
+                    "model": model_id,
+                    "messages": messages,
+                    "tools": tools,
+                    "tool_choice": "auto",
+                    "stream": False,
+                    "temperature": temperature,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-        cand = response.candidates[0] if getattr(response, "candidates", None) else None
-        if not cand or not getattr(cand, "content", None):
-            stopped_reason = "empty_candidate"
-            break
+            choice = data["choices"][0]
+            assistant_msg = choice["message"]
+            finish_reason = choice.get("finish_reason", "")
 
-        contents.append(cand.content)
+            # Append the full assistant message (may contain tool_calls or content)
+            messages.append(assistant_msg)
 
-        fcalls = _extract_function_calls(response)
-        if not fcalls:
-            final_text = (getattr(response, "text", None) or "").strip()
-            stopped_reason = "model_done"
-            steps.append(AgentLoopStep(turn=turn, role="model", detail=final_text[:500]))
-            break
+            tool_calls: list[dict[str, Any]] = assistant_msg.get("tool_calls") or []
 
-        tool_parts: list[types.Part] = []
-        for fc in fcalls:
-            name = fc.name or ""
-            raw_args = dict(fc.args or {})
-            logger.info("agent_loop tool call case=%s tool=%s args=%s", case_id, name, raw_args)
-            try:
-                result = execute_kyc_tool(tool_ctx, name, raw_args)
-            except Exception as e:
-                logger.exception("agent_loop tool error case=%s tool=%s", case_id, name)
-                result = {"error": "tool_execution_failed", "message": str(e)}
-            steps.append(
-                AgentLoopStep(
-                    turn=turn,
-                    role="tool",
-                    detail=name,
-                    tool_name=name,
-                    tool_result=result,
+            if not tool_calls:
+                final_text = (assistant_msg.get("content") or "").strip()
+                stopped_reason = "model_done"
+                steps.append(
+                    AgentLoopStep(turn=turn, role="model", detail=final_text[:500])
                 )
-            )
-            tool_parts.append(types.Part.from_function_response(name=name, response=result))
+                break
 
-        contents.append(types.Content(role="tool", parts=tool_parts))
+            # Execute all requested tool calls
+            tool_result_msgs: list[dict[str, Any]] = []
+            used_todo = False
 
-        used_todo = any((fc.name or "") == "todo" for fc in fcalls)
-        rounds_since_todo = 0 if used_todo else rounds_since_todo + 1
-        if rounds_since_todo >= TODO_NAG_AFTER_ROUNDS:
-            todo_reminders_injected += 1
-            steps.append(
-                AgentLoopStep(turn=turn, role="reminder", detail=_TODO_NAG_TEXT[:200]),
-            )
-            contents.append(
-                types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=_TODO_NAG_TEXT)],
+            for tc in tool_calls:
+                name = tc["function"]["name"]
+                raw_args = tc["function"].get("arguments") or "{}"
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                except json.JSONDecodeError:
+                    args = {}
+
+                logger.info(
+                    "agent_loop tool call case=%s tool=%s args=%s", case_id, name, args
                 )
-            )
+
+                try:
+                    result = execute_kyc_tool(tool_ctx, name, args)
+                except Exception as e:
+                    logger.exception("agent_loop tool error case=%s tool=%s", case_id, name)
+                    result = {"error": "tool_execution_failed", "message": str(e)}
+
+                steps.append(
+                    AgentLoopStep(
+                        turn=turn,
+                        role="tool",
+                        detail=name,
+                        tool_name=name,
+                        tool_result=result,
+                    )
+                )
+
+                tool_result_msgs.append({
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", f"call_{turn}_{name}"),
+                    "content": json.dumps(result, default=str),
+                })
+
+                if name == "todo":
+                    used_todo = True
+
+            messages.extend(tool_result_msgs)
+
+            rounds_since_todo = 0 if used_todo else rounds_since_todo + 1
+            if rounds_since_todo >= TODO_NAG_AFTER_ROUNDS:
+                todo_reminders_injected += 1
+                rounds_since_todo = 0
+                messages.append({"role": "user", "content": _TODO_NAG_TEXT})
+                steps.append(
+                    AgentLoopStep(turn=turn, role="reminder", detail=_TODO_NAG_TEXT[:200])
+                )
 
     return AgentLoopResult(
         final_text=final_text,

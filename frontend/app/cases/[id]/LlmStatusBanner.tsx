@@ -16,7 +16,7 @@ export default function LlmStatusBanner() {
 
   if (!error) return null;
 
-  const needsAuth = /reauthenticate|application-default login|credentials/i.test(error);
+  const ollamaDown = /connect|connection|ollama|11434/i.test(error);
 
   return (
     <div
@@ -31,9 +31,9 @@ export default function LlmStatusBanner() {
         lineHeight: 1.5,
       }}
     >
-      <strong>Vertex LLM 未生效</strong> — workflow 正在用规则引擎兜底（所以很快）。
+      <strong>Ollama 未连接</strong> — workflow 正在用规则引擎兜底（结果仍然正确，但无 LLM 叙述）。
       <div style={{ marginTop: 6, color: "#fcd34d" }}>{error}</div>
-      {needsAuth ? (
+      {ollamaDown ? (
         <pre
           style={{
             marginTop: 8,
@@ -44,7 +44,7 @@ export default function LlmStatusBanner() {
             borderRadius: 6,
           }}
         >
-          gcloud auth application-default login
+          {`# 启动 Ollama\nollama serve\n\n# 拉取模型（首次需要）\nollama pull qwen2.5:7b`}
         </pre>
       ) : null}
     </div>

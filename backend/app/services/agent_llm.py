@@ -64,6 +64,7 @@ def enrich_with_llm(
     user_notes: str = "",
 ) -> dict[str, Any]:
     """Call Gemini; merge JSON result onto baseline without overwriting preserved keys."""
+    global _last_llm_failure
     merged: dict[str, Any] = {**baseline, "llm_used": False, "source": "rules"}
     if not workflow_llm_agents_enabled():
         return merged
@@ -99,11 +100,9 @@ def enrich_with_llm(
         out["llm_model"] = raw.model_id
         out["llm_latency_ms"] = round(raw.latency_ms, 1)
         out["llm_task"] = task_kind
-        global _last_llm_failure
         _last_llm_failure = None
         return out
     except Exception as exc:
-        global _last_llm_failure
         _last_llm_failure = str(exc)
         logger.warning("LLM agent %s failed, using rules only: %s", task_kind, exc)
         merged["llm_error"] = str(exc)
