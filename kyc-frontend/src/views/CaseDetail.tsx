@@ -7,7 +7,7 @@ import { AIDot } from "@/components/ai/AIDot";
 import { SpringIn } from "@/components/ai/SpringIn";
 import { StaggerList } from "@/components/ai/StaggerList";
 import { StreamingText } from "@/components/ai/StreamingText";
-import { api, type ApiCaseDetail, type WorkflowRunStatus } from "@/lib/api";
+import { api, type ApiCaseDetail, type ApiOrganization, type WorkflowRunStatus } from "@/lib/api";
 import {
   ShieldAlert,
   Sparkles,
@@ -23,6 +23,13 @@ import {
   Trash2,
   Users,
   Plus,
+  Mail,
+  Send,
+  Clock,
+  Search,
+  ExternalLink,
+  ChevronDown,
+  X,
 } from "lucide-react";
 
 type TabId = "overview" | "documents" | "ownership" | "screening" | "risk" | "agents" | "decision" | "audit";
@@ -675,198 +682,111 @@ function Risk({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () => v
   );
 }
 
-/* ── Workflow result breakdown ────────────────────────────────────── */
+/* ── AI Agents tab — enterprise decision workbench ────────────────── */
 type PhaseOutput = Record<string, unknown>;
 type WfResult = NonNullable<WorkflowRunStatus["result"]>;
-
 function str(v: unknown): string { return typeof v === "string" ? v : ""; }
 function arr(v: unknown): string[] { return Array.isArray(v) ? v.map(String) : []; }
 
-function WorkflowResult({ result }: { result: WfResult }) {
-  const phaseMap = Object.fromEntries(result.phases.map((p) => [p.phase, p.output as PhaseOutput]));
-  const review   = phaseMap["review"]   ?? {};
-  const risk     = phaseMap["risk"]     ?? {};
-  const ownership = phaseMap["ownership"] ?? {};
-  const screening = phaseMap["screening"] ?? {};
-  const intake   = phaseMap["intake"]   ?? {};
-
-  const execSummary     = str(review["executive_summary"]);
-  const openIssues      = arr(review["open_issues"]);
-  const recommendation  = str(review["recommendation"] || risk["recommended_disposition"]);
-  const reviewerChecklist = arr(review["reviewer_checklist"]);
-
-  const triggeredRules  = arr(risk["triggered_rules"]);
-  const riskNarrative   = str(risk["risk_narrative"] || risk["agent_reasoning"]);
-  const eddRequired     = Boolean(risk["edd_required"]);
-
-  const ownershipNarrative = str(ownership["ownership_narrative"] || ownership["agent_reasoning"]);
-  const screeningNarrative = str(screening["screening_narrative"]);
-  const intakeNotes        = arr(intake["document_quality_notes"]);
-
-  const DISP_LABEL: Record<string, string> = {
-    approve_with_standard_monitoring: "Approve — standard monitoring",
-    escalate:                         "Escalate to EDD",
-    pending_human_review:             "Pending human review",
-    reject:                           "Reject",
-  };
-  const dispKind: "ok" | "warn" | "critical" =
-    recommendation.startsWith("approve") ? "ok" :
-    recommendation === "reject"          ? "critical" : "warn";
-
-  return (
-    <div className="mt-4 space-y-4 border-t border-divider pt-4">
-
-      {/* Status bar + phase badges */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusPill
-            label={result.stopped_early ? "stopped early" : result.final_status.replace(/_/g, " ")}
-            kind={result.stopped_early ? "critical" : "ok"}
-          />
-          {result.risk_level && (
-            <RiskPill level={result.risk_level as "low" | "medium" | "high" | "critical" | undefined} />
-          )}
-          {result.risk_score != null && (
-            <span className="text-[13px] font-bold text-ink">
-              Score: {Number(result.risk_score).toFixed(1)}
-            </span>
-          )}
-          {eddRequired && (
-            <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-[12px] font-bold">
-              EDD required
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {PHASE_ORDER.map((name) => {
-            const phase = result.phases.find((p) => p.phase === name);
-            const s = phase?.status || "pending";
-            const color = PHASE_COLOR[s] ?? "#334155";
-            return (
-              <span key={name} className="text-[11px] font-semibold px-2 py-0.5 rounded border"
-                style={{ background: `${color}22`, borderColor: color, color }}>
-                {name}
-              </span>
-            );
-          })}
-        </div>
-
-        {result.stopped_early && (
-          <p className="text-[13px] text-amber-600 font-medium">
-            Workflow stopped early — complete intake fields before re-running.
-          </p>
-        )}
-      </div>
-
-      {/* Executive summary */}
-      {execSummary && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1.5">Executive summary</div>
-          <p className="text-[14px] text-ink leading-relaxed bg-surface-fog rounded-md px-4 py-3">{execSummary}</p>
-        </div>
-      )}
-
-      {/* Recommendation */}
-      {recommendation && (
-        <div className="flex items-center gap-3">
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute">Recommendation</div>
-          <StatusPill label={DISP_LABEL[recommendation] ?? recommendation.replace(/_/g, " ")} kind={dispKind} />
-        </div>
-      )}
-
-      {/* Triggered rules */}
-      {triggeredRules.length > 0 && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-2">Triggered rules</div>
-          <div className="flex flex-wrap gap-2">
-            {triggeredRules.map((r) => (
-              <span key={r} className="px-2.5 py-1 rounded-full bg-surface-sage text-surface-deep text-[12px] font-medium">
-                {r}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Risk narrative */}
-      {riskNarrative && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1.5">Risk agent reasoning</div>
-          <p className="text-[13px] text-mute leading-relaxed">{riskNarrative}</p>
-        </div>
-      )}
-
-      {/* Ownership narrative */}
-      {ownershipNarrative && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1.5">Ownership assessment</div>
-          <p className="text-[13px] text-mute leading-relaxed">{ownershipNarrative}</p>
-        </div>
-      )}
-
-      {/* Screening summary */}
-      {screeningNarrative && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1">Screening</div>
-          <p className="text-[13px] text-mute">{screeningNarrative}</p>
-        </div>
-      )}
-
-      {/* Open issues */}
-      {openIssues.length > 0 && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-2">Open issues</div>
-          <ul className="space-y-1">
-            {openIssues.map((issue, i) => (
-              <li key={i} className="flex items-start gap-2 text-[13px] text-ink">
-                <AlertTriangle size={13} className="text-amber-500 mt-0.5 shrink-0" />
-                {issue}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Reviewer checklist */}
-      {reviewerChecklist.length > 0 && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-2">Reviewer checklist</div>
-          <ul className="space-y-1">
-            {reviewerChecklist.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-[13px] text-mute">
-                <CheckCircle2 size={13} className="text-surface-deep mt-0.5 shrink-0" />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Document quality notes */}
-      {intakeNotes.length > 0 && (
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-2">Document quality notes</div>
-          <ul className="space-y-1">
-            {intakeNotes.map((note, i) => (
-              <li key={i} className="text-[13px] text-mute leading-snug">· {note}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Agents + Workflow runner ─────────────────────────────────────── */
 const POLL_MS = 2000;
 const PHASE_ORDER = ["intake", "verification", "screening", "ownership", "risk", "review"];
 const RUN_COLOR: Record<string, string> = {
   pending: "#f59e0b", running: "#3b82f6", completed: "#22c55e", failed: "#ef4444",
 };
-const PHASE_COLOR: Record<string, string> = {
-  completed: "#22c55e", skipped: "#64748b", pending: "#334155",
+
+const DISP_LABEL: Record<string, string> = {
+  approve_with_standard_monitoring: "Approve — standard monitoring",
+  escalate: "Escalate to EDD",
+  pending_human_review: "Pending human review",
+  reject: "Reject",
 };
+
+const REASON_CODES = [
+  "Confirmed false positive",
+  "Name match only — no other identifiers",
+  "Verified against primary evidence",
+  "Within risk appetite",
+  "Requires enhanced due diligence",
+  "Requires client information",
+  "Data quality issue",
+];
+
+type Severity = "high" | "med" | "info";
+type Finding = {
+  id: string;
+  severity: Severity;
+  title: string;
+  code: string;
+  sourceLabel: string;
+  kind: "document" | "field" | "screening";
+  docType?: string;
+  reasoning: string;
+};
+
+const RULE_META: Record<string, { title: string; docType?: string; sourceLabel: string; kind: "document" | "field"; reasoning: string }> = {
+  HIGH_RISK_INDUSTRY: {
+    title: "High-risk industry", docType: "certificate_of_incorporation",
+    sourceLabel: "Certificate of incorporation", kind: "document",
+    reasoning: "The declared business activity classifies as a high-risk industry under the active policy pack. Review the activity stated on the certificate of incorporation.",
+  },
+  HIGH_RISK_CORRIDOR: {
+    title: "High-risk corridor", sourceLabel: "Org profile · jurisdiction", kind: "field",
+    reasoning: "Incorporation country combined with the cross-border corridor sits on the elevated-risk list. This is derived from structured org fields rather than a single uploaded document.",
+  },
+  TRANSACTION_VOLUME_VERY_HIGH: {
+    title: "Very high transaction volume", docType: "audited_financials",
+    sourceLabel: "Audited financials", kind: "document",
+    reasoning: "Declared annual transaction volume exceeds the very-high threshold in the rules engine. Cross-check the figure on the audited financials against the intake declaration.",
+  },
+};
+
+function SeverityDot({ s }: { s: Severity }) {
+  const c = s === "high" ? "bg-mark-red" : s === "med" ? "bg-[color:var(--surface-sage)]" : "bg-surface-deep";
+  return <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + c} />;
+}
+
+function buildFindings(detail: ApiCaseDetail, phaseMap: Record<string, PhaseOutput>): Finding[] {
+  const out: Finding[] = [];
+  const risk = phaseMap["risk"] ?? {};
+  const triggered = arr(risk["triggered_rules"]);
+  const rules = triggered.length ? triggered : (detail.risk_assessments[0]?.triggered_rules ?? []);
+  rules.forEach((rule, i) => {
+    const m = RULE_META[rule];
+    out.push({
+      id: "rule-" + i,
+      severity: "high",
+      title: m?.title ?? rule.replace(/_/g, " ").toLowerCase(),
+      code: rule,
+      sourceLabel: m?.sourceLabel ?? "Risk rule",
+      kind: m?.kind ?? "field",
+      docType: m?.docType,
+      reasoning: m?.reasoning || str(risk["risk_narrative"] || risk["agent_reasoning"]) || "Triggered by the rules engine.",
+    });
+  });
+  const screening = phaseMap["screening"] ?? {};
+  const fps = Array.isArray(screening["likely_false_positives"]) ? (screening["likely_false_positives"] as Record<string, unknown>[]) : [];
+  fps.forEach((fp, i) => {
+    const name = str(fp["query_name"]) || "party";
+    const st = str(fp["screening_type"]) || "screening";
+    out.push({
+      id: "scr-" + i, severity: "info",
+      title: "Screening — likely false positive", code: st + " · " + name,
+      sourceLabel: "Screening detail", kind: "screening",
+      reasoning: "Adverse-media / list match assessed as a likely false positive. Confirm the disposition against the matched record before escalation.",
+    });
+  });
+  const intake = phaseMap["intake"] ?? {};
+  const dq = arr(intake["document_quality_notes"]);
+  if (dq.length) {
+    out.push({
+      id: "dq-0", severity: "med",
+      title: "Document quality note", code: "document_quality",
+      sourceLabel: "Certificate of incorporation", kind: "document", docType: "certificate_of_incorporation",
+      reasoning: dq[0],
+    });
+  }
+  return out;
+}
 
 function Agents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () => void }) {
   const caseId = detail.case.id;
@@ -875,320 +795,574 @@ function Agents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () =>
   const [runError, setRunError] = React.useState<string | null>(null);
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function stopPolling() {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  const [drawer, setDrawer] = React.useState<{ type: "evidence" | "edd" | "rfi"; finding?: Finding } | null>(null);
+  const [dispo, setDispo] = React.useState<Record<string, { action: string; reason: string }>>({});
+  const [maker, setMaker] = React.useState<string | null>(null);
+  const [rfiItems, setRfiItems] = React.useState<string[] | null>(null);
+  const [toastMsg, setToastMsg] = React.useState<string | null>(null);
+  const toastRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  function toast(m: string) {
+    setToastMsg(m);
+    if (toastRef.current) clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(() => setToastMsg(null), 2800);
   }
 
+  function stopPolling() { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
   async function pollRun(runId: string) {
     try {
       const s = await api.getWorkflowRun(caseId, runId);
       setRunStatus(s);
-      if (s.status === "completed" || s.status === "failed") {
-        stopPolling(); setBusy(false); onRefresh();
-      }
-    } catch {
-      stopPolling(); setBusy(false);
-      setRunError("Lost connection while polling.");
-    }
+      if (s.status === "completed" || s.status === "failed") { stopPolling(); setBusy(false); onRefresh(); }
+    } catch { stopPolling(); setBusy(false); setRunError("Lost connection while polling."); }
   }
-
-  // On mount: load the latest run so results persist across page loads / tab switches
   React.useEffect(() => {
     let cancelled = false;
     api.getLatestWorkflowRun(caseId).then((s) => {
       if (cancelled) return;
       setRunStatus(s);
-      // If still in-flight, resume polling
       if (s.status === "pending" || s.status === "running") {
         setBusy(true);
         pollRef.current = setInterval(() => pollRun(s.run_id), POLL_MS);
       }
-    }).catch(() => {}); // 404 = no prior runs, that's fine
+    }).catch(() => {});
     return () => { cancelled = true; stopPolling(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
-
   async function runWorkflow() {
     setBusy(true); setRunError(null); setRunStatus(null); stopPolling();
     try {
       const { run_id } = await api.runWorkflow(caseId);
       await pollRun(run_id);
       pollRef.current = setInterval(() => pollRun(run_id), POLL_MS);
-    } catch (e) {
-      setRunError((e as Error).message); setBusy(false);
-    }
+    } catch (e) { setRunError((e as Error).message); setBusy(false); }
   }
 
-  const result = runStatus?.result;
+  const result = runStatus?.result ?? null;
+  const phaseMap: Record<string, PhaseOutput> = result
+    ? Object.fromEntries(result.phases.map((p) => [p.phase, p.output as PhaseOutput]))
+    : {};
+  const review = phaseMap["review"] ?? {};
+  const riskPhase = phaseMap["risk"] ?? {};
+  const latestRisk = detail.risk_assessments[0];
+
+  const recommendation = str(review["recommendation"] || riskPhase["recommended_disposition"])
+    || (latestRisk?.edd_required ? "escalate" : "");
+  const eddRequired = Boolean(riskPhase["edd_required"]) || Boolean(latestRisk?.edd_required);
+  const summaryRun = detail.agent_runs.find((r) => r.agent_name === "decision_support_agent" || r.agent_name === "summary_agent");
+  const execSummary = str(review["executive_summary"]) || str(summaryRun?.output_payload?.["executive_summary"]);
+  const openIssues = arr(review["open_issues"]).length ? arr(review["open_issues"]) : arr(summaryRun?.output_payload?.["open_issues"]);
+  const checklist = arr(review["reviewer_checklist"]).length ? arr(review["reviewer_checklist"]) : arr(summaryRun?.output_payload?.["reviewer_checklist"]);
+  const reviewerNotes = str(review["reviewer_notes"]) || str(summaryRun?.output_payload?.["reviewer_notes"]);
+
+  const findings = buildFindings(detail, phaseMap);
+  const dispKind: "ok" | "warn" | "critical" =
+    recommendation.startsWith("approve") ? "ok" : recommendation === "reject" ? "critical" : "warn";
+  const intakeMissingDocs = arr((phaseMap["intake"] ?? {})["missing_docs"]);
+
+  function submitDecision(type: string) { setMaker(type); setRfiItems(null); toast(type + " submitted — awaiting second approval"); }
+  async function checkerApprove() {
+    if (!maker) return;
+    const decisionType = maker.toLowerCase() === "approve" ? "approved" : maker.toLowerCase() === "reject" ? "rejected" : "edd";
+    try {
+      await api.decide(caseId, { decision_type: decisionType, decision_notes: "Maker-checker: finalized by checker." });
+      onRefresh(); toast("Decision finalized · recorded to audit trail");
+    } catch (e) { toast((e as Error).message); }
+    setMaker(null);
+  }
+  async function createEDD() {
+    try {
+      await api.decide(caseId, { decision_type: "edd", decision_notes: "EDD case opened from AI agents workbench." });
+      onRefresh(); toast("EDD case created · escalated for enhanced due diligence");
+    } catch (e) { toast((e as Error).message); }
+    setDrawer(null);
+  }
+  function sendRFI(items: string[], to: string) { setRfiItems(items); setMaker(null); setDrawer(null); toast("Request sent to " + to + " · case paused"); }
 
   return (
     <div className="space-y-3">
-      {/* Workflow runner */}
-      <Panel eyebrow="Onboarding pipeline" action={<Sparkles size={14} className="text-surface-deep" />}>
-        <p className="text-[13px] text-mute mb-3">
-          Runs all 6 phases (intake → verification → screening → ownership → risk → review) using Qwen 2.5 7B agents.
-        </p>
-        {runError && <div className="text-[13px] text-mark-red mb-3">{runError}</div>}
-        <PillButton variant="primary" size="sm" onClick={runWorkflow} disabled={busy}>
-          {busy ? "Running pipeline…" : "Run full workflow"}
-        </PillButton>
+      {runError && <div className="text-[13px] text-mark-red">{runError}</div>}
 
+      <VerdictBar
+        recommendation={recommendation} dispKind={dispKind} eddRequired={eddRequired} runStatus={runStatus}
+        onEdd={() => setDrawer({ type: "edd" })}
+        onRfi={() => setDrawer({ type: "rfi" })}
+        onApprove={() => submitDecision("Approve")}
+        onReject={() => submitDecision("Reject")}
+      />
+
+      {maker && (
+        <div className="flex items-center gap-3 rounded-md px-4 py-3 text-[13px] bg-[color:var(--valley-cream)] border border-[color:var(--surface-sage)]">
+          <Users size={16} className="text-surface-deep" />
+          <span className="flex-1"><b>{maker} submitted by analyst (maker).</b> High-risk case requires a second approver (checker) before it is final.</span>
+          <PillButton variant="primary" size="sm" onClick={checkerApprove}><CheckCircle2 size={14} /> Approve as checker</PillButton>
+        </div>
+      )}
+      {rfiItems && (
+        <div className="flex items-center gap-3 rounded-md px-4 py-3 text-[13px] bg-[#eef4fb] border border-[#b9d4f0]">
+          <Clock size={16} className="text-[#185fa5]" />
+          <span className="flex-1"><b>Awaiting client information.</b> Case paused · {rfiItems.length} outstanding items — resumes when documents are received.</span>
+          <PillButton variant="secondary" size="sm" onClick={() => { setRfiItems(null); toast("Documents received · case resumed"); }}>Mark received</PillButton>
+        </div>
+      )}
+
+      <Panel
+        eyebrow="Onboarding pipeline"
+        action={<PillButton variant="primary" size="sm" onClick={runWorkflow} disabled={busy}>{busy ? "Running…" : "Run full workflow"}</PillButton>}
+      >
+        <p className="text-[13px] text-mute mb-3">Runs all 6 phases (intake → verification → screening → ownership → risk → review).</p>
+        <PhaseStepper result={result} agentRuns={detail.agent_runs} />
         {runStatus && (
-          <div className="mt-4 space-y-3">
-            <div className="flex items-center gap-3">
-              <span
-                className="text-[12px] font-bold px-3 py-0.5 rounded-full border"
-                style={{
-                  background: `${RUN_COLOR[runStatus.status] ?? "#334155"}22`,
-                  color: RUN_COLOR[runStatus.status] ?? "#94a3b8",
-                  borderColor: RUN_COLOR[runStatus.status] ?? "#334155",
-                }}
-              >
-                {runStatus.status}
-              </span>
-              {runStatus.elapsed_seconds != null && (
-                <span className="text-[12px] text-mute">{runStatus.elapsed_seconds.toFixed(1)}s</span>
-              )}
-              {runStatus.slow_warning && (
-                <span className="text-[12px] text-amber-500">⚠ slow run</span>
-              )}
-            </div>
-
-            {result && <WorkflowResult result={result} />}
+          <div className="mt-3 flex items-center gap-3">
+            <span className="text-[12px] font-bold px-3 py-0.5 rounded-full border" style={{
+              background: (RUN_COLOR[runStatus.status] ?? "#334155") + "22",
+              color: RUN_COLOR[runStatus.status] ?? "#94a3b8",
+              borderColor: RUN_COLOR[runStatus.status] ?? "#334155",
+            }}>{runStatus.status}</span>
+            {runStatus.elapsed_seconds != null && <span className="text-[12px] text-mute">{runStatus.elapsed_seconds.toFixed(1)}s</span>}
+            {runStatus.slow_warning && <span className="text-[12px] text-amber-500">⚠ slow run</span>}
           </div>
         )}
       </Panel>
 
-      {/* Individual agents */}
-      <div className="grid grid-cols-2 gap-3">
-        <IntakeAgentPanel caseId={caseId} detail={detail} onRefresh={onRefresh} />
-        <SummaryAgentPanel caseId={caseId} detail={detail} onRefresh={onRefresh} />
+      <div className="grid grid-cols-[1.55fr_1fr] gap-3 items-stretch">
+        <DecisionMemo summary={execSummary} openIssues={openIssues} checklist={checklist} notes={reviewerNotes} recommendation={recommendation} dispKind={dispKind} />
+        <RiskDriversPanel
+          findings={findings} dispo={dispo} setDispo={setDispo}
+          onOpenEvidence={(f) => setDrawer({ type: "evidence", finding: f })}
+          onRequestInfo={() => setDrawer({ type: "rfi" })}
+        />
       </div>
 
-      {/* Agent run history */}
-      <Panel eyebrow="History" title="Agent runs" action={<Activity size={14} className="text-surface-deep" />}>
-        {detail.agent_runs.length === 0 && (
-          <div className="text-[14px] text-mute">No agent runs yet.</div>
-        )}
-        <StaggerList step={60}>
-          {detail.agent_runs.map((r, i) => (
-            <div key={i} className="border-b border-divider last:border-b-0 py-3 flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-surface-mint flex items-center justify-center shrink-0">
-                <Sparkles size={14} className="text-surface-deep" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-bold">{r.agent_name} agent</span>
-                  <span className="text-[11px] text-mute">· {new Date(r.started_at).toLocaleString()}</span>
-                </div>
-                <div className="text-[13px] text-mute mt-0.5">
-                  {(r.output_payload?.["summary"] as string) ?? JSON.stringify(r.output_payload).slice(0, 120)}
-                </div>
-              </div>
-              <StatusPill label="completed" kind="ok" />
+      <AgentDetail detail={detail} caseId={caseId} onRefresh={onRefresh} />
+
+      <Panel eyebrow="History" title="Agent runs" action={<Sparkles size={14} className="text-surface-deep" />}>
+        {detail.agent_runs.length === 0 && <div className="text-[14px] text-mute">No agent runs yet.</div>}
+        {detail.agent_runs.length > 0 && (
+          <div className="overflow-hidden">
+            <div className="grid grid-cols-[200px_180px_1fr_110px] text-[11px] uppercase tracking-[0.07em] text-mute font-bold border-b border-divider">
+              <div className="px-2 py-2">Agent</div><div className="px-2 py-2">When</div><div className="px-2 py-2">Output</div><div className="px-2 py-2">Status</div>
             </div>
-          ))}
-        </StaggerList>
+            {detail.agent_runs.map((r, i) => (
+              <div key={i} className="grid grid-cols-[200px_180px_1fr_110px] border-b border-divider last:border-b-0 text-[12.5px] hover:bg-surface-fog/60">
+                <div className="px-2 py-2.5 flex items-center gap-2 font-bold">
+                  <span className="w-6 h-6 rounded-full bg-surface-mint flex items-center justify-center shrink-0"><Sparkles size={12} className="text-surface-deep" /></span>
+                  {r.agent_name}
+                </div>
+                <div className="px-2 py-2.5 text-mute whitespace-nowrap">{new Date(r.started_at).toLocaleString()}</div>
+                <div className="px-2 py-2.5 text-mute truncate">{(r.output_payload?.["summary"] as string) ?? (r.output_payload?.["executive_summary"] as string) ?? JSON.stringify(r.output_payload).slice(0, 120)}</div>
+                <div className="px-2 py-2.5"><StatusPill label="completed" kind="ok" /></div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
+
+      {drawer?.type === "evidence" && drawer.finding && (
+        <EvidenceDrawer finding={drawer.finding} detail={detail} caseId={caseId} onClose={() => setDrawer(null)} onReviewed={() => { toast("Evidence marked as reviewed"); setDrawer(null); }} />
+      )}
+      {drawer?.type === "edd" && <EddDrawer onClose={() => setDrawer(null)} onCreate={createEDD} />}
+      {drawer?.type === "rfi" && <RfiDrawer org={detail.organization} missingDocs={intakeMissingDocs} onClose={() => setDrawer(null)} onSend={sendRFI} />}
+
+      {toastMsg && (
+        <div className="fixed left-1/2 bottom-6 -translate-x-1/2 z-[60] bg-surface-deep text-ink-inverse px-4 py-2.5 rounded-full text-[13px] font-medium shadow-lg flex items-center gap-2">
+          <CheckCircle2 size={15} className="text-[color:var(--surface-sage)]" /> {toastMsg}
+        </div>
+      )}
     </div>
   );
 }
 
-function IntakeAgentPanel({ caseId, detail, onRefresh }: { caseId: string; detail: ApiCaseDetail; onRefresh: () => void }) {
-  const latest = detail.agent_runs.find((r) => r.agent_name === "intake_agent");
-  const [result, setResult] = React.useState<Record<string, unknown> | null>(latest?.output_payload ?? null);
-  const [busy, setBusy] = React.useState(false);
-
-  async function run() {
-    setBusy(true);
-    try {
-      const r = await api.runIntakeAgent(caseId);
-      setResult(r.output_payload);
-      onRefresh();
-    } catch (e) { alert((e as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  const score = result ? Number(result["intake_completeness_score"] ?? 0) : null;
-  const missingFields = Array.isArray(result?.["missing_fields"]) ? result!["missing_fields"] as string[] : [];
-  const missingDocs   = Array.isArray(result?.["missing_docs"])   ? result!["missing_docs"]   as string[] : [];
-  const nextActions   = Array.isArray(result?.["next_actions"])   ? result!["next_actions"]   as string[] : [];
-  const remediation   = Array.isArray(result?.["remediation_plan"]) ? result!["remediation_plan"] as string[] : [];
-  const qualityNotes  = Array.isArray(result?.["document_quality_notes"]) ? result!["document_quality_notes"] as string[] : [];
-  const reasoning     = typeof result?.["agent_reasoning"] === "string" ? result!["agent_reasoning"] as string : "";
-
-  const scoreColor = score == null ? "#94a3b8" : score >= 80 ? "#22c55e" : score >= 50 ? "#f59e0b" : "#ef4444";
-
+function VerdictBar({ recommendation, dispKind, eddRequired, runStatus, onEdd, onRfi, onApprove, onReject }: {
+  recommendation: string; dispKind: "ok" | "warn" | "critical"; eddRequired: boolean; runStatus: WorkflowRunStatus | null;
+  onEdd: () => void; onRfi: () => void; onApprove: () => void; onReject: () => void;
+}) {
+  const recLabel = recommendation ? (DISP_LABEL[recommendation] ?? recommendation.replace(/_/g, " ")) : "Pending pipeline run";
   return (
-    <Panel eyebrow="Intake agent" action={<Sparkles size={14} className="text-surface-deep" />}>
-      <p className="text-[13px] text-mute leading-5 mb-3">Validates org fields and documents against the policy pack.</p>
-      <PillButton variant="primary" size="sm" onClick={run} disabled={busy}>
-        {busy ? "Running…" : "Run intake agent"}
-      </PillButton>
-
-      {result && (
-        <div className="mt-4 space-y-3 border-t border-divider pt-4">
-          {/* Completeness score */}
-          <div className="flex items-end gap-2">
-            <span className="text-[38px] font-bold leading-none" style={{ color: scoreColor }}>{score}</span>
-            <span className="text-[13px] text-mute mb-1">/ 100 completeness</span>
+    <section className="bg-white border border-divider border-l-4 border-l-[color:var(--surface-sage)] rounded-md px-5 py-4 flex items-center justify-between gap-5 flex-wrap">
+      <div className="flex items-center gap-5 flex-wrap">
+        <div>
+          <div className="text-[10.5px] uppercase tracking-[0.08em] font-bold text-mute">AI Recommendation</div>
+          <div className="mt-1 flex items-center gap-2">
+            <StatusPill label={recLabel} kind={dispKind} />
+            {eddRequired && <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold">EDD required</span>}
           </div>
+        </div>
+        <div className="w-px h-8 bg-divider" />
+        <div className="flex items-center gap-2 text-[12px] text-mute">
+          {runStatus ? (
+            <><CheckCircle2 size={14} className="text-accent-green" /> Pipeline {runStatus.status}
+              {runStatus.elapsed_seconds != null ? ` · ${runStatus.elapsed_seconds.toFixed(1)}s` : ""}
+              {runStatus.slow_warning ? " · ⚠ slow" : ""}</>
+          ) : "Pipeline not run yet"}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <PillButton variant="primary" size="sm" onClick={onEdd}><ShieldAlert size={14} /> Escalate to EDD</PillButton>
+        <PillButton variant="secondary" size="sm" onClick={onRfi}><Mail size={14} /> Request info</PillButton>
+        <PillButton variant="secondary" size="sm" onClick={onApprove}>Approve</PillButton>
+        <PillButton variant="secondary" size="sm" onClick={onReject} className="hover:border-mark-red"><span className="text-mark-red">Reject</span></PillButton>
+      </div>
+    </section>
+  );
+}
 
-          {/* Status chips */}
-          <div className="flex flex-wrap gap-1.5">
-            {nextActions.map((a) => (
-              <span key={a} className="px-2 py-0.5 rounded-full bg-surface-mint text-surface-deep text-[11px] font-bold">
-                {a.replace(/_/g, " ")}
-              </span>
-            ))}
+function PhaseStepper({ result, agentRuns }: { result: WfResult | null; agentRuns: ApiCaseDetail["agent_runs"] }) {
+  function phaseStatus(name: string): string {
+    const p = result?.phases.find((x) => x.phase === name);
+    if (p) return p.status;
+    return agentRuns.some((r) => r.agent_name.startsWith(name)) ? "completed" : "pending";
+  }
+  return (
+    <div className="flex items-stretch border border-divider rounded-md overflow-hidden">
+      {PHASE_ORDER.map((name, i) => {
+        const done = phaseStatus(name) === "completed";
+        return (
+          <div key={name} className={"flex-1 px-3 py-2.5 flex items-center gap-2 " + (i ? "border-l border-divider" : "")}>
+            <span className={"w-5 h-5 rounded-full flex items-center justify-center shrink-0 " + (done ? "bg-surface-mint text-surface-deep" : "bg-surface-fog text-mute")}>
+              {done ? <CheckCircle2 size={12} /> : <span className="text-[10px] font-bold">{i + 1}</span>}
+            </span>
+            <span className="text-[12px] font-bold capitalize">{name}</span>
           </div>
+        );
+      })}
+    </div>
+  );
+}
 
-          {/* Missing items */}
-          {(missingFields.length > 0 || missingDocs.length > 0) && (
-            <div className="space-y-1">
-              {missingFields.map((f) => (
-                <div key={f} className="flex items-center gap-1.5 text-[12px] text-mark-red">
-                  <XCircle size={12} /> Missing field: {f}
-                </div>
-              ))}
-              {missingDocs.map((d) => (
-                <div key={d} className="flex items-center gap-1.5 text-[12px] text-mark-red">
-                  <XCircle size={12} /> Missing doc: {d}
-                </div>
-              ))}
-            </div>
-          )}
-          {missingFields.length === 0 && missingDocs.length === 0 && (
-            <div className="flex items-center gap-1.5 text-[12px] text-surface-deep font-medium">
-              <CheckCircle2 size={12} /> All required fields and documents present
-            </div>
-          )}
-
-          {/* Agent reasoning */}
-          {reasoning && (
-            <p className="text-[12px] text-mute leading-relaxed">{reasoning}</p>
-          )}
-
-          {/* Remediation plan */}
-          {remediation.length > 0 && (
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1">Remediation plan</div>
-              <ul className="space-y-0.5">
-                {remediation.map((item, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-[12px] text-ink">
-                    <AlertTriangle size={11} className="text-amber-500 mt-0.5 shrink-0" />{item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Document quality notes */}
-          {qualityNotes.length > 0 && (
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1">Document quality</div>
-              <ul className="space-y-0.5">
-                {qualityNotes.map((note, i) => (
-                  <li key={i} className="text-[12px] text-mute">· {note}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+function DecisionMemo({ summary, openIssues, checklist, notes, recommendation, dispKind }: {
+  summary: string; openIssues: string[]; checklist: string[]; notes: string; recommendation: string; dispKind: "ok" | "warn" | "critical";
+}) {
+  return (
+    <Panel eyebrow="Decision memo" title="analyst-ready summary" action={<Sparkles size={14} className="text-surface-deep" />}>
+      {summary
+        ? <p className="text-[13.5px] text-ink leading-relaxed bg-surface-fog rounded-md px-4 py-3">{summary}</p>
+        : <p className="text-[13px] text-mute">No summary yet. Run the workflow or the Summary agent.</p>}
+      {recommendation && (
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-[10.5px] uppercase tracking-[0.08em] font-bold text-mute">Recommendation</span>
+          <StatusPill label={DISP_LABEL[recommendation] ?? recommendation.replace(/_/g, " ")} kind={dispKind} />
         </div>
       )}
+      {openIssues.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[10.5px] uppercase tracking-[0.08em] font-bold text-mute mb-2">Open issues</div>
+          <ul className="space-y-1">{openIssues.map((s, i) => (
+            <li key={i} className="flex items-start gap-2 text-[13px] text-ink"><AlertTriangle size={13} className="text-amber-500 mt-0.5 shrink-0" />{s}</li>
+          ))}</ul>
+        </div>
+      )}
+      {checklist.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[10.5px] uppercase tracking-[0.08em] font-bold text-mute mb-2">Reviewer checklist</div>
+          <ul className="space-y-1">{checklist.map((s, i) => (
+            <li key={i} className="flex items-start gap-2 text-[13px] text-mute"><CheckCircle2 size={13} className="text-surface-deep mt-0.5 shrink-0" />{s}</li>
+          ))}</ul>
+        </div>
+      )}
+      {notes && <p className="mt-4 pt-3 border-t border-dashed border-divider text-[12.5px] text-mute italic">{notes}</p>}
     </Panel>
   );
 }
 
-function SummaryAgentPanel({ caseId, detail, onRefresh }: { caseId: string; detail: ApiCaseDetail; onRefresh: () => void }) {
-  const latest = detail.agent_runs.find((r) => r.agent_name === "decision_support_agent" || r.agent_name === "summary_agent");
-  const [result, setResult] = React.useState<Record<string, unknown> | null>(latest?.output_payload ?? null);
-  const [busy, setBusy] = React.useState(false);
-
-  async function run() {
-    setBusy(true);
-    try {
-      const r = await api.runSummaryAgent(caseId);
-      setResult(r.output_payload);
-      onRefresh();
-    } catch (e) { alert((e as Error).message); }
-    finally { setBusy(false); }
+function RiskDriversPanel({ findings, dispo, setDispo, onOpenEvidence, onRequestInfo }: {
+  findings: Finding[];
+  dispo: Record<string, { action: string; reason: string }>;
+  setDispo: React.Dispatch<React.SetStateAction<Record<string, { action: string; reason: string }>>>;
+  onOpenEvidence: (f: Finding) => void;
+  onRequestInfo: () => void;
+}) {
+  const [open, setOpen] = React.useState<Record<string, boolean>>(findings.length ? { [findings[0].id]: true } : {});
+  function setAction(f: Finding, action: string) {
+    if (action === "Request info") onRequestInfo();
+    setDispo((d) => ({ ...d, [f.id]: { action, reason: d[f.id]?.reason ?? "" } }));
   }
-
-  const execSummary    = typeof result?.["executive_summary"] === "string" ? result!["executive_summary"] as string : "";
-  const recommendation = typeof result?.["recommendation"]    === "string" ? result!["recommendation"]    as string : "";
-  const openIssues     = Array.isArray(result?.["open_issues"])     ? result!["open_issues"]     as string[] : [];
-  const checklist      = Array.isArray(result?.["reviewer_checklist"]) ? result!["reviewer_checklist"] as string[] : [];
-  const reviewerNotes  = typeof result?.["reviewer_notes"] === "string" ? result!["reviewer_notes"] as string : "";
-
-  const DISP_LABEL: Record<string, string> = {
-    approve_with_standard_monitoring: "Approve — standard monitoring",
-    escalate: "Escalate to EDD",
-    pending_human_review: "Pending human review",
-    reject: "Reject",
-  };
-  const dispKind: "ok" | "warn" | "critical" =
-    recommendation.startsWith("approve") ? "ok" : recommendation === "reject" ? "critical" : "warn";
-
+  function setReason(f: Finding, reason: string) {
+    setDispo((d) => ({ ...d, [f.id]: { action: d[f.id]?.action ?? "", reason } }));
+  }
   return (
-    <Panel eyebrow="Summary agent" action={<Sparkles size={14} className="text-surface-deep" />}>
-      <p className="text-[13px] text-mute leading-5 mb-3">Produces an analyst-ready decision memo with open issues and a reviewer checklist.</p>
-      <PillButton variant="primary" size="sm" onClick={run} disabled={busy}>
-        {busy ? "Running…" : "Run summary agent"}
-      </PillButton>
-
-      {result && (
-        <div className="mt-4 space-y-3 border-t border-divider pt-4">
-          {/* Executive summary */}
-          {execSummary && (
-            <p className="text-[13px] text-ink leading-relaxed bg-surface-fog rounded-md px-3 py-2.5">{execSummary}</p>
-          )}
-
-          {/* Recommendation */}
-          {recommendation && (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute">Recommendation</span>
-              <StatusPill label={DISP_LABEL[recommendation] ?? recommendation.replace(/_/g, " ")} kind={dispKind} />
+    <section className="bg-white border border-divider rounded-md overflow-hidden h-full flex flex-col">
+      <header className="px-4 py-2.5 border-b border-divider flex items-center gap-3">
+        <span className="w-1.5 h-1.5 rounded-full bg-mark-red" />
+        <span className="text-[12px] tracking-[0.08em] uppercase text-mark-red font-bold">Risk drivers & evidence</span>
+        <span className="text-[12px] text-mute ml-auto">{findings.length} {findings.length === 1 ? "driver" : "drivers"}</span>
+      </header>
+      <div className="p-4 space-y-2.5 flex-1">
+        {findings.length === 0 && <p className="text-[13px] text-mute">No risk drivers. Run the workflow to populate findings.</p>}
+        {findings.map((f) => {
+          const isOpen = !!open[f.id];
+          const d = dispo[f.id];
+          return (
+            <div key={f.id} className="border border-divider rounded-md overflow-hidden">
+              <div className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-surface-fog" onClick={() => setOpen((o) => ({ ...o, [f.id]: !o[f.id] }))}>
+                <SeverityDot s={f.severity} />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold capitalize truncate">{f.title}</div>
+                  <div className="text-[11px] text-mute font-mono truncate">{f.code}</div>
+                </div>
+                <button
+                  className="ml-auto inline-flex items-center gap-1.5 bg-surface-mint text-surface-deep px-2.5 py-1 rounded-full text-[11.5px] font-bold whitespace-nowrap hover:opacity-80"
+                  onClick={(e) => { e.stopPropagation(); onOpenEvidence(f); }}
+                >
+                  <FileText size={12} /> {f.sourceLabel}
+                </button>
+                <ChevronDown size={15} className={"text-mute transition-transform " + (isOpen ? "rotate-180" : "")} />
+              </div>
+              {isOpen && (
+                <div className="px-3 pb-3 pl-9 text-[12.5px] text-mute leading-relaxed" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-ink font-medium">Why flagged:</span> {f.reasoning}
+                  <div className="mt-2">
+                    <button className="inline-flex items-center gap-1.5 bg-surface-mint text-surface-deep px-2.5 py-1 rounded-full text-[11.5px] font-bold hover:opacity-80" onClick={() => onOpenEvidence(f)}>
+                      <ExternalLink size={12} /> Open evidence
+                    </button>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-dashed border-divider">
+                    <div className="text-[10px] uppercase tracking-[0.07em] font-bold text-mute mb-2">Operator disposition</div>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      {["Accept", "Override", "Request info", "Escalate"].map((a) => (
+                        <button key={a} onClick={() => setAction(f, a)}
+                          className={"px-2.5 py-1 rounded-full text-[11.5px] font-bold border " + (d?.action === a ? (a === "Escalate" ? "bg-mark-red text-white border-mark-red" : "bg-surface-deep text-white border-surface-deep") : "bg-white text-ink border-divider hover:border-surface-deep")}>
+                          {a}
+                        </button>
+                      ))}
+                    </div>
+                    {d?.action && (
+                      <select value={d.reason} onChange={(e) => setReason(f, e.target.value)} className="mt-2 w-full max-w-[320px] text-[12px] px-2.5 py-2 border border-divider rounded-md bg-white outline-none focus:ring-2 focus:ring-surface-deep">
+                        <option value="">— select reason code —</option>
+                        {REASON_CODES.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    )}
+                    {d?.action && d?.reason && (
+                      <div className="mt-2 flex items-center gap-1.5 text-[11.5px] font-bold text-surface-deep"><CheckCircle2 size={13} /> {d.action} · {d.reason} · analyst</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
-          {/* Open issues */}
-          {openIssues.length > 0 && (
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1">Open issues</div>
-              <ul className="space-y-0.5">
-                {openIssues.map((issue, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-[12px] text-ink">
-                    <AlertTriangle size={11} className="text-amber-500 mt-0.5 shrink-0" />{issue}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Reviewer checklist */}
-          {checklist.length > 0 && (
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-mute mb-1">Reviewer checklist</div>
-              <ul className="space-y-0.5">
-                {checklist.map((item, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-[12px] text-mute">
-                    <CheckCircle2 size={11} className="text-surface-deep mt-0.5 shrink-0" />{item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Reviewer notes */}
-          {reviewerNotes && (
-            <p className="text-[12px] text-mute italic">{reviewerNotes}</p>
-          )}
+function summarizePayload(p: Record<string, unknown>): React.ReactNode {
+  const entries = Object.entries(p).filter(([, v]) => v != null && (typeof v !== "object" || Array.isArray(v)));
+  return (
+    <div className="space-y-1">
+      {entries.slice(0, 8).map(([k, v]) => (
+        <div key={k} className="flex gap-2">
+          <span className="text-mute min-w-[150px] font-mono text-[11.5px]">{k}</span>
+          <span className="text-ink">{Array.isArray(v) ? (v.length ? v.map(String).join(", ") : "none") : String(v)}</span>
         </div>
-      )}
+      ))}
+    </div>
+  );
+}
+
+function AgentDetail({ detail, caseId, onRefresh }: { detail: ApiCaseDetail; caseId: string; onRefresh: () => void }) {
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [open, setOpen] = React.useState<Record<string, boolean>>({});
+  async function run(which: "intake" | "summary") {
+    setBusy(which);
+    try { if (which === "intake") await api.runIntakeAgent(caseId); else await api.runSummaryAgent(caseId); onRefresh(); }
+    catch (e) { alert((e as Error).message); }
+    finally { setBusy(null); }
+  }
+  const byName = (n: string) => detail.agent_runs.find((r) => r.agent_name === n);
+  const rows = [
+    { key: "intake_agent", name: "Intake" },
+    { key: "verification_agent", name: "Verification" },
+    { key: "screening_agent", name: "Screening" },
+    { key: "ownership_agent", name: "Ownership" },
+    { key: "risk_agent", name: "Risk" },
+  ];
+  return (
+    <Panel eyebrow="Agent detail" title="per-phase output" action={
+      <div className="flex gap-2">
+        <PillButton variant="secondary" size="sm" onClick={() => run("intake")} disabled={busy !== null}>{busy === "intake" ? "Running…" : "Run intake"}</PillButton>
+        <PillButton variant="secondary" size="sm" onClick={() => run("summary")} disabled={busy !== null}>{busy === "summary" ? "Running…" : "Run summary"}</PillButton>
+      </div>
+    }>
+      <div className="divide-y divide-divider">
+        {rows.map((r) => {
+          const run0 = byName(r.key);
+          const isOpen = !!open[r.key];
+          return (
+            <div key={r.key}>
+              <div className="flex items-center gap-3 py-3 cursor-pointer" onClick={() => setOpen((o) => ({ ...o, [r.key]: !o[r.key] }))}>
+                <span className="w-7 h-7 rounded-md bg-surface-mint flex items-center justify-center shrink-0"><Sparkles size={13} className="text-surface-deep" /></span>
+                <span className="text-[13.5px] font-bold">{r.name} agent</span>
+                <span className="ml-auto"><StatusPill label={run0 ? "completed" : "not run"} kind={run0 ? "ok" : "progress"} /></span>
+                <ChevronDown size={15} className={"text-mute transition-transform " + (isOpen ? "rotate-180" : "")} />
+              </div>
+              {isOpen && run0 && <div className="pb-4 pl-10 text-[12.5px] text-mute leading-relaxed">{summarizePayload(run0.output_payload)}</div>}
+              {isOpen && !run0 && <div className="pb-4 pl-10 text-[12.5px] text-mute">No run yet.</div>}
+            </div>
+          );
+        })}
+      </div>
     </Panel>
   );
 }
+
+function Drawer({ title, subtitle, icon, children, footer, onClose }: {
+  title: string; subtitle: string; icon: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode; onClose: () => void;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <aside className="fixed top-0 right-0 h-full w-[560px] max-w-[94vw] z-50 bg-white shadow-2xl flex flex-col">
+        <header className="flex items-center gap-3 px-5 py-4 border-b border-divider">
+          {icon}
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.08em] font-bold text-surface-deep">{title}</div>
+            <div className="text-[12px] text-mute">{subtitle}</div>
+          </div>
+          <button onClick={onClose} className="ml-auto w-8 h-8 rounded-md flex items-center justify-center text-mute hover:bg-surface-fog hover:text-ink"><X size={16} /></button>
+        </header>
+        <div className="p-5 overflow-auto flex-1">{children}</div>
+        {footer && <div className="px-5 py-3.5 border-t border-divider flex justify-end gap-2 items-center">{footer}</div>}
+      </aside>
+    </>
+  );
+}
+
+function EvidenceDrawer({ finding, detail, caseId, onClose, onReviewed }: {
+  finding: Finding; detail: ApiCaseDetail; caseId: string; onClose: () => void; onReviewed: () => void;
+}) {
+  const doc = finding.docType ? detail.documents.find((d) => d.document_type === finding.docType) : undefined;
+  const fileUrl = doc ? `/api/v1/cases/${caseId}/documents/${doc.id}/file` : null;
+  return (
+    <Drawer title="Evidence" subtitle={finding.sourceLabel} icon={<Search size={18} className="text-surface-deep" />} onClose={onClose}
+      footer={<>
+        <PillButton variant="secondary" size="sm" onClick={onClose}>Close</PillButton>
+        <PillButton variant="primary" size="sm" onClick={onReviewed}><CheckCircle2 size={14} /> Mark reviewed</PillButton>
+      </>}>
+      {finding.kind === "document" && (doc ? (
+        <div className="rounded-md border border-divider bg-surface-fog p-4 text-[13px]">
+          <div className="font-bold">{doc.file_name}</div>
+          <div className="text-mute text-[12px]">{doc.document_type} · {doc.processing_status ?? "uploaded"}</div>
+          {fileUrl && <a href={fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-surface-deep font-bold text-[12.5px]"><ExternalLink size={13} /> Open document</a>}
+          {doc.extracted_fields && Object.keys(doc.extracted_fields).length > 0 && (
+            <div className="mt-3">
+              <div className="text-[10.5px] uppercase tracking-[0.07em] font-bold text-mute mb-1">Extracted (OCR)</div>
+              {Object.entries(doc.extracted_fields).slice(0, 8).map(([k, v]) => (
+                <div key={k} className="flex gap-2 text-[12px]"><span className="font-mono text-mute min-w-[140px]">{k}</span><span>{String(v)}</span></div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-md border border-divider bg-surface-fog p-4 text-[13px] text-mute">No <b>{finding.docType}</b> uploaded yet. Request it from the client to verify this finding.</div>
+      ))}
+      {finding.kind === "field" && (
+        <div className="rounded-md border border-divider bg-surface-fog p-4 text-[13px]">
+          <div className="text-[10.5px] uppercase tracking-[0.07em] font-bold text-mute mb-1">Structured org record</div>
+          <div className="flex gap-2"><span className="font-mono text-mute min-w-[160px]">incorporation_country</span><span>{detail.organization?.incorporation_country ?? "—"}</span></div>
+          <p className="text-[12px] text-mute mt-2">Derived field — no source PDF. Edit in the Overview tab.</p>
+        </div>
+      )}
+      {finding.kind === "screening" && (
+        <div>
+          <div className="text-[10.5px] uppercase tracking-[0.07em] font-bold text-mute mb-1">Screening matches</div>
+          {detail.screening.length === 0 && <p className="text-[13px] text-mute">No screening rows.</p>}
+          {detail.screening.map((s, i) => (
+            <div key={i} className="rounded-md border border-divider p-3 text-[12.5px] mb-2">
+              <div className="font-bold">{s.query_name ?? "—"}</div>
+              <div className="text-mute">{s.screening_type} · matched: {s.matched_name ?? "—"} · score {s.match_score?.toFixed(0) ?? "—"} · {s.disposition ?? "pending"}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[12.5px] text-mute mt-4"><span className="text-ink font-medium">Why flagged:</span> {finding.reasoning}</p>
+    </Drawer>
+  );
+}
+
+function EddDrawer({ onClose, onCreate }: { onClose: () => void; onCreate: () => void }) {
+  const items: [string, string][] = [
+    ["Source of wealth (SoW) documentation", "Owner-level wealth origin"],
+    ["Source of funds (SoF) for declared volume", "Supports very-high volume trigger"],
+    ["Enhanced sanctions / PEP re-screen", "Incl. export-control / entity-list check"],
+    ["UBO supplementary ID", "Where personal data is redacted"],
+    ["Adverse media deep-dive", "Resolve likely false positives"],
+    ["Site visit / verification call", ""],
+  ];
+  return (
+    <Drawer title="Open EDD case" subtitle="enhanced due diligence checklist" icon={<ShieldAlert size={18} className="text-mark-red" />} onClose={onClose}
+      footer={<>
+        <PillButton variant="secondary" size="sm" onClick={onClose}>Cancel</PillButton>
+        <PillButton variant="primary" size="sm" onClick={onCreate}><Plus size={14} /> Create EDD case</PillButton>
+      </>}>
+      <div className="text-[10.5px] uppercase tracking-[0.07em] font-bold text-mute mb-2">Required EDD steps</div>
+      {items.map(([t, s], i) => (
+        <label key={i} className="flex items-start gap-2.5 py-2.5 border-b border-divider text-[13px]">
+          <input type="checkbox" defaultChecked={i < 4} className="mt-0.5" />
+          <span>{t}{s && <span className="block text-[11.5px] text-mute mt-0.5">{s}</span>}</span>
+        </label>
+      ))}
+      <div className="mt-4">
+        <label className="block text-[10.5px] uppercase tracking-[0.06em] font-bold text-mute mb-1.5">Assign to</label>
+        <select className="w-full px-3 py-2 bg-surface-fog rounded-md text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-surface-deep"><option>EDD specialist queue</option><option>Financial crime team</option></select>
+      </div>
+      <div className="mt-3">
+        <label className="block text-[10.5px] uppercase tracking-[0.06em] font-bold text-mute mb-1.5">Due date</label>
+        <input type="date" className="w-full px-3 py-2 bg-surface-fog rounded-md text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-surface-deep" />
+      </div>
+    </Drawer>
+  );
+}
+
+function RfiDrawer({ org, missingDocs, onClose, onSend }: {
+  org: ApiOrganization | null; missingDocs: string[]; onClose: () => void; onSend: (items: string[], to: string) => void;
+}) {
+  const baseItems = [
+    "Audited financials supporting declared transaction volume",
+    "Source of funds statement",
+    "Photo ID for the beneficial owner",
+    "Clarification of business activity scope",
+  ];
+  const items = missingDocs.length ? missingDocs.map((d) => "Provide " + d.replace(/_/g, " ")) : baseItems;
+  const [checked, setChecked] = React.useState<boolean[]>(items.map(() => true));
+  const [to, setTo] = React.useState("compliance@" + (org?.website?.replace(/^https?:\/\//, "") ?? "client.example"));
+  const name = org?.legal_name ?? "the organization";
+  const body =
+`Dear ${name} compliance team,
+
+Thank you for your onboarding submission. To complete our review we need a few additional items:
+
+${items.map((it, i) => `${i + 1}. ${it}.`).join("\n")}
+
+Please reply with the documents attached within 10 business days. Your application is on hold pending receipt.
+
+Kind regards,
+KYC Onboarding Team`;
+  const selected = items.filter((_, i) => checked[i]);
+  return (
+    <Drawer title="Request info from client" subtitle="AI-drafted from missing / unclear items" icon={<Mail size={18} className="text-surface-deep" />} onClose={onClose}
+      footer={<>
+        <PillButton variant="secondary" size="sm" onClick={onClose}>Cancel</PillButton>
+        <PillButton variant="primary" size="sm" onClick={() => onSend(selected, to)}><Send size={14} /> Send & pause case</PillButton>
+      </>}>
+      <div className="text-[10.5px] uppercase tracking-[0.07em] font-bold text-mute mb-2">Outstanding items · AI-selected</div>
+      {items.map((it, i) => (
+        <label key={i} className="flex items-start gap-2.5 py-2.5 border-b border-divider text-[13px]">
+          <input type="checkbox" checked={checked[i]} onChange={() => setChecked((c) => c.map((v, j) => j === i ? !v : v))} className="mt-0.5" />
+          <span>{it}</span>
+        </label>
+      ))}
+      <div className="mt-4">
+        <label className="block text-[10.5px] uppercase tracking-[0.06em] font-bold text-mute mb-1.5">To</label>
+        <input value={to} onChange={(e) => setTo(e.target.value)} className="w-full px-3 py-2 bg-surface-fog rounded-md text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-surface-deep" />
+      </div>
+      <div className="mt-3">
+        <label className="block text-[10.5px] uppercase tracking-[0.06em] font-bold text-mute mb-1.5">Auto-drafted email · editable</label>
+        <textarea rows={13} defaultValue={body} className="w-full px-3 py-2 bg-surface-fog rounded-md text-[13px] leading-relaxed outline-none focus:bg-white focus:ring-2 focus:ring-surface-deep font-mono" />
+      </div>
+    </Drawer>
+  );
+}
+
 
 /* ── Decision ─────────────────────────────────────────────────────── */
 function Decision({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () => void }) {

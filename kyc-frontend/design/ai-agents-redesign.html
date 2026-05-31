@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KYC · AI Agents — enterprise redesign</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root{
+    --navy:#002c4e; --navy-deep:#112e44; --yellow:#f3d01c; --cream:#fefae8;
+    --ink:#1f2933; --mute:#5c646c; --divider:#e2e6ea; --fog:#f4f5f7; --mint:#e6eaed;
+    --red:#b8232f; --red-bg:#fbecec; --amber:#b7791f; --amber-bg:#fdf3e0;
+    --green:#1c7a4d; --green-bg:#e8f4ee; --white:#fff;
+    --r:10px; --r-sm:7px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef1f4;color:var(--ink);font-family:"DM Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
+  .app{max-width:1280px;margin:0 auto;padding:20px}
+  .mono{font-family:"Roboto Mono",monospace}
+  .eyebrow{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--mute)}
+  .card{background:var(--white);border:1px solid var(--divider);border-radius:var(--r);overflow:hidden}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--divider)}
+  .card-h .dot{width:6px;height:6px;border-radius:50%;background:var(--navy)}
+  .card-h .ttl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--navy);font-weight:700}
+  .card-h .sub{font-size:12px;color:var(--mute)}
+  .card-b{padding:16px}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;line-height:1.6}
+  .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--divider);background:var(--white);color:var(--ink);
+       padding:8px 14px;border-radius:999px;font:inherit;font-weight:700;font-size:13px;cursor:pointer;transition:.12s}
+  .btn:hover{border-color:var(--navy)}
+  .btn-primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .btn-primary:hover{background:#013a66}
+  .btn-danger:hover{border-color:var(--red);color:var(--red)}
+  .btn-sm{padding:6px 11px;font-size:12px}
+  .lucide{width:15px;height:15px;stroke-width:2}
+
+  /* header */
+  .hero{background:var(--navy);color:#fff;border-radius:var(--r) var(--r) 0 0;padding:18px 22px;display:flex;justify-content:space-between;gap:24px}
+  .crumb{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--yellow);font-weight:700;margin-bottom:6px}
+  .hero h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.01em}
+  .hero .desc{font-size:13px;color:#cfd9e2;margin-top:3px}
+  .hero .tags{margin-top:12px;display:flex;flex-wrap:wrap;gap:7px}
+  .tag{background:rgba(255,255,255,.1);padding:4px 11px;border-radius:999px;font-size:12px;font-weight:500}
+  .score-wrap{text-align:right}
+  .score-lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#9fb2c2;font-weight:700}
+  .score{font-size:46px;font-weight:700;line-height:1;color:var(--yellow);letter-spacing:-.02em}
+  .score-den{font-size:11px;color:#9fb2c2;margin-top:2px}
+
+  /* tabs */
+  .tabs{display:flex;align-items:center;background:#fff;border-left:1px solid var(--divider);border-right:1px solid var(--divider);border-bottom:1px solid var(--divider);padding:0 8px;border-radius:0 0 var(--r) var(--r)}
+  .tab{padding:11px 14px;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--mute);border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px}
+  .tab.active{color:var(--navy);border-bottom-color:var(--navy)}
+  .tab:hover:not(.active){color:var(--ink)}
+  .tabs .spacer{margin-left:auto}
+  .tlink{font-size:12px;color:var(--mute);display:inline-flex;align-items:center;gap:5px;padding:0 8px;cursor:pointer}
+  .tlink:hover{color:var(--ink)}
+
+  .grid{display:grid;gap:14px}
+  .mt{margin-top:14px}
+
+  /* verdict bar */
+  .verdict{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;
+           background:linear-gradient(0deg,#fff,#fff);border:1px solid var(--divider);border-left:4px solid var(--yellow);border-radius:var(--r);padding:16px 20px}
+  .verdict .lead{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .verdict .rec-lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--mute)}
+  .verdict .rec-val{font-size:18px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:8px}
+  .vsep{width:1px;height:34px;background:var(--divider)}
+  .meta{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:6px}
+
+  /* stepper */
+  .stepper{display:flex;align-items:stretch}
+  .step{flex:1;display:flex;flex-direction:column;gap:5px;padding:4px 8px;border-left:1px solid var(--divider);position:relative}
+  .step:first-child{border-left:0}
+  .step .s-top{display:flex;align-items:center;gap:7px}
+  .step .s-name{font-size:12px;font-weight:700;text-transform:capitalize}
+  .step .s-time{font-size:10.5px;color:var(--mute)}
+  .step .check{width:18px;height:18px;border-radius:50%;background:var(--green-bg);color:var(--green);display:flex;align-items:center;justify-content:center}
+  .step .check .lucide{width:11px;height:11px}
+
+  /* findings */
+  .finding{border:1px solid var(--divider);border-radius:var(--r-sm);margin-bottom:10px;overflow:hidden}
+  .finding-h{display:flex;align-items:center;gap:11px;padding:11px 13px;cursor:pointer;background:#fff}
+  .finding-h:hover{background:var(--fog)}
+  .sev{width:9px;height:9px;border-radius:50%;flex:none}
+  .sev.high{background:var(--red)} .sev.med{background:var(--amber)} .sev.info{background:#3b82c4}
+  .finding .rule{font-weight:700;font-size:13px}
+  .finding .rule .mono{font-size:11.5px;color:var(--mute);font-weight:500;display:block;margin-top:1px}
+  .srcchip{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:var(--mint);color:var(--navy);
+           padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .srcchip:hover{background:#d6dde3}
+  .chev{color:var(--mute);transition:.15s}
+  .finding.open .chev{transform:rotate(180deg)}
+  .finding-b{display:none;padding:0 13px 13px 33px;font-size:12.5px;color:var(--mute);line-height:1.65}
+  .finding.open .finding-b{display:block}
+  .finding-b .why{color:var(--ink)}
+  .ev-row{margin-top:9px;display:flex;align-items:center;gap:8px;font-size:11.5px}
+  .ev-row .k{color:var(--mute);min-width:74px}
+
+  .memo p{font-size:13.5px;line-height:1.65;margin:0 0 10px}
+  .memo .quote{background:var(--fog);border-radius:var(--r-sm);padding:13px 15px;font-size:13.5px;line-height:1.7}
+  .lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--mute);margin:16px 0 8px}
+  ul.clean{list-style:none;margin:0;padding:0}
+  ul.clean li{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:4px 0;line-height:1.55}
+  ul.clean li .lucide{flex:none;margin-top:2px}
+  .note-ital{font-size:12.5px;color:var(--mute);font-style:italic;line-height:1.6;margin-top:14px;border-top:1px dashed var(--divider);padding-top:12px}
+
+  .acc{border-top:1px solid var(--divider)}
+  .acc:first-child{border-top:0}
+  .acc-h{display:flex;align-items:center;gap:10px;padding:13px 4px;cursor:pointer}
+  .acc-h:hover{background:var(--fog)}
+  .acc-h .nm{font-weight:700;font-size:13.5px}
+  .acc-h .chip2{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .acc-b{display:none;padding:0 4px 16px 34px}
+  .acc.open .acc-b{display:block}
+  .acc.open .chev{transform:rotate(180deg)}
+  .ic{width:30px;height:30px;border-radius:8px;background:var(--mint);display:flex;align-items:center;justify-content:center;color:var(--navy);flex:none}
+  .ic .lucide{width:15px;height:15px}
+
+  table.hist{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.hist th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--divider)}
+  table.hist td{padding:9px 10px;border-bottom:1px solid var(--divider);vertical-align:top}
+  table.hist td.mono{white-space:nowrap}
+  table.hist tr:last-child td{border-bottom:0}
+  table.hist tr:hover td{background:var(--fog)}
+  .agent-nm{font-weight:700}
+  .agent-cell{display:flex;align-items:center;gap:9px}
+  .aic{width:26px;height:26px;border-radius:50%;background:var(--mint);color:var(--navy);display:flex;align-items:center;justify-content:center;flex:none}
+  .aic .lucide{width:14px;height:14px}
+  .payload{color:var(--mute);font-size:11.5px}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;
+         padding:11px 18px;border-radius:999px;font-size:13px;font-weight:500;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:50;display:flex;align-items:center;gap:9px}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast .lucide{color:var(--yellow)}
+  .demo-note{font-size:11px;color:var(--mute);text-align:center;margin:18px 0 4px}
+
+  /* operator disposition */
+  .dispo{margin-top:12px;border-top:1px dashed var(--divider);padding-top:11px}
+  .dispo-lbl{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--mute);display:block;margin-bottom:7px}
+  .dispo-btns{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .db{border:1px solid var(--divider);background:#fff;border-radius:999px;padding:5px 11px;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;color:var(--ink)}
+  .db:hover{border-color:var(--navy)}
+  .db.sel{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .db.danger.sel{background:var(--red);border-color:var(--red)}
+  .reason{margin-top:8px;display:none}
+  .reason.show{display:block}
+  .reason select{font:inherit;font-size:12px;padding:7px 9px;border:1px solid var(--divider);border-radius:7px;background:#fff;width:100%;max-width:340px}
+  .dispo-status{display:none;margin-top:9px;font-size:11.5px;font-weight:700;align-items:center;gap:7px}
+  .dispo-status.show{display:flex}
+  .dtag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px;background:var(--green-bg);color:var(--green)}
+
+  /* scrim + drawer */
+  .scrim{position:fixed;inset:0;background:rgba(10,25,40,.45);opacity:0;pointer-events:none;transition:.2s;z-index:40}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:580px;max-width:94vw;background:#fff;z-index:45;transform:translateX(100%);transition:.28s cubic-bezier(.3,.8,.3,1);display:flex;flex-direction:column;box-shadow:-12px 0 40px rgba(0,0,0,.18)}
+  .drawer.show{transform:translateX(0)}
+  .drawer-h{display:flex;align-items:center;gap:11px;padding:16px 20px;border-bottom:1px solid var(--divider)}
+  .drawer-h .dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--navy)}
+  .drawer-h .ds{font-size:12px;color:var(--mute)}
+  .drawer-h .x{margin-left:auto;cursor:pointer;color:var(--mute);width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center}
+  .drawer-h .x:hover{background:var(--fog);color:var(--ink)}
+  .drawer-b{padding:20px;overflow:auto;flex:1}
+  .drawer-f{padding:14px 20px;border-top:1px solid var(--divider);display:flex;gap:9px;justify-content:flex-end;align-items:center}
+  .docframe{border:1px solid var(--divider);border-radius:8px;background:var(--fog);padding:18px 20px;font-size:12px;line-height:1.8;color:var(--ink)}
+  .docframe .docttl{font-weight:700;text-align:center;font-size:12.5px;margin-bottom:13px;text-transform:uppercase;letter-spacing:.05em}
+  .hl{background:#fff3b0;padding:1px 4px;border-radius:3px;box-shadow:0 0 0 2px var(--yellow)}
+  .redact{background:#222;color:#222;border-radius:2px;padding:0 18px;user-select:none}
+  .cmp{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  .cmp th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);padding:7px 9px;border-bottom:1px solid var(--divider)}
+  .cmp td{padding:8px 9px;border-bottom:1px solid var(--divider);vertical-align:top}
+  .cmp .yes{color:var(--green);font-weight:700}
+  .cmp .warn2{color:var(--amber);font-weight:700}
+  .check-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;font-size:13px;border-bottom:1px solid var(--divider)}
+  .check-item:last-child{border-bottom:0}
+  .check-item input{width:16px;height:16px;margin-top:2px;flex:none}
+  .check-item .ci-sub{font-size:11.5px;color:var(--mute);margin-top:2px}
+  .fld{margin:14px 0}
+  .fld label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--mute);margin-bottom:6px}
+  .fld select,.fld input,.fld textarea{width:100%;font:inherit;font-size:13px;padding:9px 11px;border:1px solid var(--divider);border-radius:7px;background:#fff}
+  .sec-lbl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--mute);margin:18px 0 8px}
+
+  /* state banners */
+  .banner{display:none;margin-top:14px;align-items:center;gap:12px;border-radius:var(--r);padding:12px 16px;font-size:13px}
+  .banner.show{display:flex}
+  .banner.mc{background:var(--cream);border:1px solid var(--yellow)}
+  .banner.rfi{background:#eef4fb;border:1px solid #b9d4f0}
+  .banner .bspan{flex:1}
+  .banner b{font-weight:700}
+  .rfi-items{margin-top:6px;font-size:12px;color:var(--mute)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ CASE HEADER ============ -->
+  <div class="hero">
+    <div>
+      <div class="crumb">Cases / Beijing Hanwei Tech</div>
+      <h1>Beijing Hanwei Tech</h1>
+      <div class="desc">Semiconductor design · onboarding · customer onboarding</div>
+      <div class="tags">
+        <span class="pill" style="background:#e6eaed;color:var(--navy)">pending human review</span>
+        <span class="tag">Onboarding</span>
+        <span class="tag">China</span>
+      </div>
+    </div>
+    <div class="score-wrap">
+      <div class="score-lbl">Risk score</div>
+      <div class="score">70.0</div>
+      <div class="score-den">/ 100</div>
+      <div style="margin-top:14px"><span class="pill" style="background:rgba(184,35,47,.16);color:#ff9ea4">● High risk</span></div>
+    </div>
+  </div>
+
+  <!-- ============ TABS ============ -->
+  <div class="tabs">
+    <div class="tab">Overview</div>
+    <div class="tab">Documents</div>
+    <div class="tab">Ownership / UBO</div>
+    <div class="tab">Screening</div>
+    <div class="tab">Risk</div>
+    <div class="tab active">AI agents</div>
+    <div class="tab">Decision</div>
+    <div class="tab">Audit</div>
+    <div class="spacer"></div>
+    <span class="tlink"><i data-lucide="refresh-cw"></i> Refresh</span>
+    <span class="tlink"><i data-lucide="arrow-left"></i> Back to cases</span>
+  </div>
+
+  <!-- ============ VERDICT BAR ============ -->
+  <div class="verdict mt">
+    <div class="lead">
+      <div>
+        <div class="rec-lbl">AI Recommendation</div>
+        <div class="rec-val"><span class="pill" style="background:var(--yellow);color:#5b4d00">● Escalate to EDD</span> <span class="pill" style="background:var(--amber-bg);color:var(--amber);font-size:11px">EDD required</span></div>
+      </div>
+      <div class="vsep"></div>
+      <div class="meta"><i data-lucide="check-circle-2" style="color:var(--green)"></i> Pipeline completed · 323.1s <span style="color:var(--amber)">⚠ slow run</span></div>
+    </div>
+    <div style="display:flex;gap:9px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="openDrawer('dwEDD')"><i data-lucide="shield-alert"></i> Escalate to EDD</button>
+      <button class="btn" onclick="openDrawer('dwRFI')"><i data-lucide="mail"></i> Request info</button>
+      <button class="btn" onclick="submitDecision('Approve')">Approve</button>
+      <button class="btn btn-danger" onclick="submitDecision('Reject')">Reject</button>
+    </div>
+  </div>
+
+  <div class="banner mc" id="mcBanner">
+    <i data-lucide="users" style="color:#8a6d00"></i>
+    <span class="bspan"><b id="mcText">Approve submitted by analyst (maker).</b> High-risk case requires a second approver (checker) before it is final — segregation of duties.</span>
+    <button class="btn btn-sm" onclick="checkerApprove()"><i data-lucide="check"></i> Approve as checker</button>
+  </div>
+
+  <div class="banner rfi" id="rfiBanner">
+    <i data-lucide="clock" style="color:#185fa5"></i>
+    <span class="bspan"><b>Awaiting client information.</b> Case paused · <span id="rfiCount">0</span> outstanding items — auto-resumes when documents are received.
+      <div class="rfi-items" id="rfiItems"></div></span>
+    <button class="btn btn-sm" onclick="rfiReceived()"><i data-lucide="inbox"></i> Mark received</button>
+  </div>
+
+  <!-- ============ PIPELINE STEPPER ============ -->
+  <div class="card mt">
+    <div class="card-h"><span class="dot"></span><span class="ttl">Onboarding pipeline</span>
+      <span class="sub">intake → verification → screening → ownership → risk → review · Qwen 2.5 7B</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="toast('Re-running full workflow…')"><i data-lucide="play"></i> Run full workflow</button>
+    </div>
+    <div class="card-b">
+      <div class="stepper">
+        <div class="step"><div class="s-top"><span class="check"><i data-lucide="check"></i></span><span class="s-name">Intake</span></div><div class="s-time">2:47:19 · score 100</div></div>
+        <div class="step"><div class="s-top"><span class="check"><i data-lucide="check"></i></span><span class="s-name">Verification</span></div><div class="s-time">2:47:23 · 0 mismatches</div></div>
+        <div class="step"><div class="s-top"><span class="check"><i data-lucide="check"></i></span><span class="s-name">Screening</span></div><div class="s-time">2:48:46 · false positives</div></div>
+        <div class="step"><div class="s-top"><span class="check"><i data-lucide="check"></i></span><span class="s-name">Ownership</span></div><div class="s-time">2:49:10 · complexity 50</div></div>
+        <div class="step"><div class="s-top"><span class="check"><i data-lucide="check"></i></span><span class="s-name">Risk</span></div><div class="s-time">5:26:37 · score 70</div></div>
+        <div class="step"><div class="s-top"><span class="check"><i data-lucide="check"></i></span><span class="s-name">Review</span></div><div class="s-time">5:52:44 · escalate</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN TWO-COLUMN ============ -->
+  <div class="grid mt" style="grid-template-columns:1.55fr 1fr;align-items:stretch">
+
+    <!-- LEFT: decision memo -->
+    <div class="card memo">
+      <div class="card-h"><span class="dot"></span><span class="ttl">Decision memo</span><span class="sub">analyst-ready summary</span>
+        <i data-lucide="sparkles" style="margin-left:auto;color:var(--navy);width:15px;height:15px"></i></div>
+      <div class="card-b">
+        <div class="quote">The KYC onboarding process for the organization has been thoroughly reviewed with no missing documents or fields, and all key verification fields match without anomalies. The risk assessment indicates a high risk level due to industry, corridor, and transaction volume triggers. Screening results are likely false positives, and ownership structures suggest a complexity score of 50.0. The recommendation is to escalate the case.</div>
+
+        <div class="lbl">Open issues</div>
+        <ul class="clean">
+          <li><i data-lucide="alert-triangle" class="lucide" style="color:var(--amber);width:14px;height:14px"></i> Review screening process for accuracy</li>
+          <li><i data-lucide="alert-triangle" class="lucide" style="color:var(--amber);width:14px;height:14px"></i> Consider increasing match score thresholds</li>
+        </ul>
+
+        <div class="lbl">Reviewer checklist</div>
+        <ul class="clean">
+          <li><i data-lucide="check-circle-2" class="lucide" style="color:var(--navy);width:14px;height:14px"></i> Review missing intake items and customer remediation plan</li>
+          <li><i data-lucide="check-circle-2" class="lucide" style="color:var(--navy);width:14px;height:14px"></i> Validate verification mismatches against primary evidence</li>
+          <li><i data-lucide="check-circle-2" class="lucide" style="color:var(--navy);width:14px;height:14px"></i> Confirm screening dispositions and false-positive rationale</li>
+          <li><i data-lucide="check-circle-2" class="lucide" style="color:var(--navy);width:14px;height:14px"></i> Validate ownership/UBO findings and escalation triggers</li>
+          <li><i data-lucide="check-circle-2" class="lucide" style="color:var(--navy);width:14px;height:14px"></i> Record explicit decision rationale for audit trail</li>
+        </ul>
+
+        <div class="note-ital">Verify that the high risk level triggers are accurately assessed and consider additional due diligence (EDD) based on the industry, corridor, and transaction volume risks. Ensure ownership structures are correctly interpreted.</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: risk drivers -> evidence (the new feature) -->
+    <div class="card">
+      <div class="card-h"><span class="dot" style="background:var(--red)"></span><span class="ttl" style="color:var(--red)">Risk drivers & evidence</span>
+        <span class="sub">3 drivers · tap to open source</span></div>
+      <div class="card-b">
+
+        <div class="finding open" onclick="tog(this)">
+          <div class="finding-h">
+            <span class="sev high"></span>
+            <span class="rule">High-risk industry<span class="mono">HIGH_RISK_INDUSTRY</span></span>
+            <span class="srcchip" onclick="openFile(event,'certificate_of_incorporation.pdf')"><i data-lucide="file-text"></i> Certificate of incorporation</span>
+            <i data-lucide="chevron-down" class="chev lucide"></i>
+          </div>
+          <div class="finding-b">
+            <span class="why">Why this file is flagged:</span> the declared business activity on the certificate of incorporation — semiconductor design — maps to a high-risk industry class under policy pack <span class="mono">v1-us-business-onboarding</span>. Semiconductor/dual-use technology carries export-control and sanctions-nexus exposure.
+            <div class="ev-row"><span class="k">Source field</span><span class="mono">business_description = "Semiconductor design"</span></div>
+            <div class="ev-row"><span class="k">Location</span> Certificate of incorporation · §1 Company particulars</div>
+            <div class="ev-row"><span class="k">Action</span><span class="srcchip" onclick="openFile(event,'certificate_of_incorporation.pdf')"><i data-lucide="external-link"></i> Open file</span></div>
+          </div>
+        </div>
+
+        <div class="finding" onclick="tog(this)">
+          <div class="finding-h">
+            <span class="sev high"></span>
+            <span class="rule">High-risk corridor<span class="mono">HIGH_RISK_CORRIDOR</span></span>
+            <span class="srcchip" onclick="openFile(event,'Overview › Jurisdiction')"><i data-lucide="map-pin"></i> Org profile</span>
+            <i data-lucide="chevron-down" class="chev lucide"></i>
+          </div>
+          <div class="finding-b">
+            <span class="why">Why this is flagged:</span> incorporation country (China) combined with the declared cross-border payment corridor sits on the elevated-risk corridor list. No single uploaded file proves the corridor — it is derived from structured org fields, so the link points to the editable source record rather than a PDF.
+            <div class="ev-row"><span class="k">Source field</span><span class="mono">incorporation_country = "CN"</span></div>
+            <div class="ev-row"><span class="k">Action</span><span class="srcchip" onclick="openFile(event,'Overview › Jurisdiction')"><i data-lucide="external-link"></i> Open in Overview</span></div>
+          </div>
+        </div>
+
+        <div class="finding" onclick="tog(this)">
+          <div class="finding-h">
+            <span class="sev high"></span>
+            <span class="rule">Very high transaction volume<span class="mono">TRANSACTION_VOLUME_VERY_HIGH</span></span>
+            <span class="srcchip" onclick="openFile(event,'audited_financials.pdf')"><i data-lucide="file-text"></i> Audited financials</span>
+            <i data-lucide="chevron-down" class="chev lucide"></i>
+          </div>
+          <div class="finding-b">
+            <span class="why">Why this file is flagged:</span> declared annual transaction volume exceeds the very-high threshold in the rules engine. Cross-check the figure on the audited financials against the intake declaration before clearing.
+            <div class="ev-row"><span class="k">Source field</span><span class="mono">expected_annual_volume &gt; threshold</span></div>
+            <div class="ev-row"><span class="k">Location</span> Audited financials · income statement</div>
+            <div class="ev-row"><span class="k">Action</span><span class="srcchip" onclick="openFile(event,'audited_financials.pdf')"><i data-lucide="external-link"></i> Open file</span></div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--divider);margin-top:6px;padding-top:12px">
+          <div class="lbl" style="margin:0 0 8px">Secondary findings</div>
+          <div class="finding" onclick="tog(this)">
+            <div class="finding-h">
+              <span class="sev info"></span>
+              <span class="rule">Screening — likely false positives<span class="mono">adverse_media · Sarah Michelle Chen</span></span>
+              <span class="srcchip" onclick="openFile(event,'Screening detail')"><i data-lucide="search"></i> Screening</span>
+              <i data-lucide="chevron-down" class="chev lucide"></i>
+            </div>
+            <div class="finding-b">
+              <span class="why">Why flagged:</span> adverse-media match on "Sarah Michelle Chen" assessed as likely false positive (common name, no corroborating identifiers). Confirm disposition before escalation.
+              <div class="ev-row"><span class="k">Action</span><span class="srcchip" onclick="openFile(event,'Screening detail')"><i data-lucide="external-link"></i> Open screening</span></div>
+            </div>
+          </div>
+          <div class="finding" onclick="tog(this)" style="margin-bottom:0">
+            <div class="finding-h">
+              <span class="sev med"></span>
+              <span class="rule">Redacted personal data<span class="mono">document_quality · DOB redacted</span></span>
+              <span class="srcchip" onclick="openFile(event,'certificate_of_incorporation.pdf')"><i data-lucide="file-text"></i> Certificate</span>
+              <i data-lucide="chevron-down" class="chev lucide"></i>
+            </div>
+            <div class="finding-b">
+              <span class="why">Why this file is flagged:</span> the certificate of incorporation has personal details such as date of birth redacted, which may require further verification against primary ID evidence.
+              <div class="ev-row"><span class="k">Action</span><span class="srcchip" onclick="openFile(event,'certificate_of_incorporation.pdf')"><i data-lucide="external-link"></i> Open file</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ AGENT DETAIL ACCORDION ============ -->
+  <div class="card mt">
+    <div class="card-h"><span class="dot"></span><span class="ttl">Agent detail</span><span class="sub">per-phase output</span></div>
+    <div class="card-b" style="padding:6px 16px">
+
+      <div class="acc open" onclick="tog(this)">
+        <div class="acc-h"><span class="ic"><i data-lucide="clipboard-check"></i></span><span class="nm">Intake agent</span>
+          <div class="chip2"><span class="pill" style="background:var(--green-bg);color:var(--green)">100 / 100</span>
+          <span class="pill" style="background:var(--mint);color:var(--navy)">proceed to verification</span><i data-lucide="chevron-down" class="chev lucide"></i></div></div>
+        <div class="acc-b">
+          <p style="margin:0 0 8px;display:flex;gap:7px;align-items:center;color:var(--green);font-weight:700;font-size:12.5px"><i data-lucide="check-circle-2" class="lucide" style="width:14px;height:14px"></i> All required fields and documents present</p>
+          <p style="font-size:12.5px;color:var(--mute);line-height:1.6;margin:0 0 8px">All fields in the organization data match or can be reasonably inferred from the OCR extracted fields on the uploaded documents. The legal name, registration number, and other critical details are accurately captured. No missing fields or documents were identified, and the OCR results align well with the declared information.</p>
+          <div class="lbl" style="margin:10px 0 4px">Document quality</div>
+          <p style="font-size:12.5px;color:var(--mute);line-height:1.6;margin:0">· The certificate of incorporation document contains all necessary details such as company name, registration number, date of incorporation, and registered office address. However, some personal details like DOB are redacted which might require further verification.</p>
+        </div>
+      </div>
+
+      <div class="acc" onclick="tog(this)">
+        <div class="acc-h"><span class="ic"><i data-lucide="badge-check"></i></span><span class="nm">Verification agent</span>
+          <div class="chip2"><span class="pill" style="background:var(--green-bg);color:var(--green)">3 matched · 0 mismatched</span><i data-lucide="chevron-down" class="chev lucide"></i></div></div>
+        <div class="acc-b">
+          <p style="font-size:12px;color:var(--mute);margin:0 0 10px">Trust-but-verify — declared values vs OCR-extracted values from primary documents.</p>
+          <table class="cmp">
+            <thead><tr><th>Field</th><th>Declared</th><th>Extracted (OCR)</th><th style="width:64px">Match</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">legal_name</td><td>Beijing Hanwei Tech</td><td>Beijing Hanwei Tech</td><td class="yes">✓</td></tr>
+              <tr><td class="mono">registration_number</td><td>REG-CN-2019-4471</td><td>REG-CN-2019-4471</td><td class="yes">✓</td></tr>
+              <tr><td class="mono">incorporation_country</td><td>CN</td><td>CN</td><td class="yes">✓</td></tr>
+              <tr><td class="mono">business_description</td><td>Semiconductor design</td><td>Semiconductor design &amp; fabrication</td><td class="warn2">review</td></tr>
+            </tbody>
+          </table>
+          <div class="ev-row" style="margin-top:10px"><span class="k" style="min-width:120px">Anomalies</span> none · 0 hard mismatches</div>
+        </div>
+      </div>
+
+      <div class="acc" onclick="tog(this)">
+        <div class="acc-h"><span class="ic"><i data-lucide="search"></i></span><span class="nm">Screening agent</span>
+          <div class="chip2"><span class="pill" style="background:var(--mint);color:var(--navy)">0 hits · 1 false positive</span><i data-lucide="chevron-down" class="chev lucide"></i></div></div>
+        <div class="acc-b">
+          <div class="ev-row"><span class="k" style="min-width:120px">Potential hits</span> none</div>
+          <div class="ev-row"><span class="k" style="min-width:120px">Likely false positive</span> adverse_media · Sarah Michelle Chen</div>
+        </div>
+      </div>
+
+      <div class="acc" onclick="tog(this)">
+        <div class="acc-h"><span class="ic"><i data-lucide="git-fork"></i></span><span class="nm">Ownership agent</span>
+          <div class="chip2"><span class="pill" style="background:var(--mint);color:var(--navy)">complexity 50.0</span><i data-lucide="chevron-down" class="chev lucide"></i></div></div>
+        <div class="acc-b">
+          <div class="ev-row"><span class="k" style="min-width:120px">Root</span> organization</div>
+          <div class="ev-row"><span class="k" style="min-width:120px">UBO</span> James Robert … (party 60c5a49e)</div>
+        </div>
+      </div>
+
+      <div class="acc" onclick="tog(this)" style="border-bottom:0">
+        <div class="acc-h"><span class="ic" style="background:var(--red-bg);color:var(--red)"><i data-lucide="shield-alert"></i></span><span class="nm">Risk agent</span>
+          <div class="chip2"><span class="pill" style="background:var(--red-bg);color:var(--red)">high · 70</span><i data-lucide="chevron-down" class="chev lucide"></i></div></div>
+        <div class="acc-b">
+          <p style="font-size:12.5px;color:var(--mute);line-height:1.6;margin:0 0 8px">The case involves a high risk level due to the industry, corridor, and transaction volume. There are no potential hits from screening or ownership complexity issues that would warrant further investigation. However, the false positive screenings indicate a need for review of data sources and validation checks.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:7px">
+            <span class="pill" style="background:var(--yellow);color:#5b4d00">HIGH_RISK_INDUSTRY</span>
+            <span class="pill" style="background:var(--yellow);color:#5b4d00">HIGH_RISK_CORRIDOR</span>
+            <span class="pill" style="background:var(--yellow);color:#5b4d00">TRANSACTION_VOLUME_VERY_HIGH</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ HISTORY ============ -->
+  <div class="card mt">
+    <div class="card-h"><span class="dot"></span><span class="ttl">History</span><span class="sub">agent runs</span>
+      <i data-lucide="sparkles" style="margin-left:auto;color:var(--navy);width:16px;height:16px"></i></div>
+    <div class="card-b" style="padding:6px 8px 10px">
+      <table class="hist">
+        <thead><tr><th style="width:160px">Agent</th><th style="width:170px">When</th><th>Output</th><th style="width:90px">Status</th></tr></thead>
+        <tbody>
+          <tr><td class="agent-nm">decision_support_agent</td><td class="mono">5/30/2026 5:52:44 AM</td><td class="payload">executive_summary: "The KYC onboarding process for the organization has been thoroughly reviewed…"</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+          <tr><td class="agent-nm">risk_agent</td><td class="mono">5/30/2026 5:26:37 AM</td><td class="payload">risk_score 70 · high · HIGH_RISK_INDUSTRY, HIGH_RISK_CORRIDOR, TRANSACTION_VOLUME_VERY_HIGH</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+          <tr><td class="agent-nm">ownership_agent</td><td class="mono">5/30/2026 2:49:10 AM</td><td class="payload">ownership_tree root: organization · James Robert…</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+          <tr><td class="agent-nm">screening_agent</td><td class="mono">5/30/2026 2:48:46 AM</td><td class="payload">potential_hits [] · likely_false_positives: Sarah Michelle Chen</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+          <tr><td class="agent-nm">verification_agent</td><td class="mono">5/30/2026 2:47:23 AM</td><td class="payload">matched incorporation_country, legal_name, registration_number · mismatched []</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+          <tr><td class="agent-nm">intake_agent</td><td class="mono">5/30/2026 2:47:19 AM</td><td class="payload">policy v1-us-business-onboarding · completeness 100</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+          <tr><td class="agent-nm">decision_support_agent</td><td class="mono">5/29/2026 1:47:07 AM</td><td class="payload">executive_summary: "The case involves a low risk with no missing documents…"</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+          <tr><td class="agent-nm">risk_agent</td><td class="mono">5/29/2026 1:46:58 AM</td><td class="payload">risk_score 0 · low · approve_with_standard_monitoring</td><td><span class="pill" style="background:var(--green-bg);color:var(--green)">completed</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="demo-note">Static mockup · brand tokens from kyc-frontend/src/index.css · content matches current screenshots</div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<div class="drawer" id="dwEvidence">
+  <div class="drawer-h"><i data-lucide="file-search" style="color:var(--navy)"></i>
+    <div><div class="dt" id="evTitle">Evidence</div><div class="ds" id="evSub">source document</div></div>
+    <div class="x" onclick="closeAll()"><i data-lucide="x"></i></div></div>
+  <div class="drawer-b" id="evBody"></div>
+  <div class="drawer-f"><button class="btn btn-sm" onclick="closeAll()">Close</button>
+    <button class="btn btn-sm btn-primary" onclick="toast('Evidence marked as reviewed')"><i data-lucide="check"></i> Mark reviewed</button></div>
+</div>
+
+<div class="drawer" id="dwEDD">
+  <div class="drawer-h"><i data-lucide="shield-alert" style="color:var(--red)"></i>
+    <div><div class="dt">Open EDD case</div><div class="ds">enhanced due diligence checklist</div></div>
+    <div class="x" onclick="closeAll()"><i data-lucide="x"></i></div></div>
+  <div class="drawer-b">
+    <p style="font-size:12.5px;color:var(--mute);margin:0 0 4px">Triggered by: high-risk industry + corridor + very high volume. Pre-selected steps below.</p>
+    <div class="sec-lbl">Required EDD steps</div>
+    <label class="check-item"><input type="checkbox" checked><span>Source of wealth (SoW) documentation<div class="ci-sub">Owner-level wealth origin</div></span></label>
+    <label class="check-item"><input type="checkbox" checked><span>Source of funds (SoF) for declared volume<div class="ci-sub">Supports TRANSACTION_VOLUME_VERY_HIGH</div></span></label>
+    <label class="check-item"><input type="checkbox" checked><span>Enhanced sanctions / PEP re-screen<div class="ci-sub">Incl. export-control / entity-list check — semiconductor × China</div></span></label>
+    <label class="check-item"><input type="checkbox" checked><span>UBO supplementary ID<div class="ci-sub">DOB redacted on certificate of incorporation</div></span></label>
+    <label class="check-item"><input type="checkbox"><span>Adverse media deep-dive — Sarah Michelle Chen<div class="ci-sub">Resolve likely false positive</div></span></label>
+    <label class="check-item"><input type="checkbox"><span>Site visit / verification call</span></label>
+    <div class="fld"><label>Assign to</label><select><option>Priya Nair — EDD specialist</option><option>Marcus Lee — EDD specialist</option><option>Financial crime team queue</option></select></div>
+    <div class="fld"><label>Due date</label><input type="date" value="2026-06-14"></div>
+    <div class="fld"><label>Priority</label><select><option>High</option><option>Critical</option><option>Medium</option></select></div>
+  </div>
+  <div class="drawer-f"><button class="btn btn-sm" onclick="closeAll()">Cancel</button>
+    <button class="btn btn-sm btn-primary" onclick="createEDD()"><i data-lucide="plus"></i> Create EDD case</button></div>
+</div>
+
+<div class="drawer" id="dwRFI">
+  <div class="drawer-h"><i data-lucide="mail" style="color:var(--navy)"></i>
+    <div><div class="dt">Request info from client</div><div class="ds">AI-drafted from missing / unclear items</div></div>
+    <div class="x" onclick="closeAll()"><i data-lucide="x"></i></div></div>
+  <div class="drawer-b">
+    <div class="sec-lbl" style="margin-top:0">Outstanding items <span style="color:#185fa5">· AI-selected</span></div>
+    <label class="check-item"><input type="checkbox" class="rfi-cb" checked><span>Audited financials supporting declared transaction volume</span></label>
+    <label class="check-item"><input type="checkbox" class="rfi-cb" checked><span>Source of funds statement</span></label>
+    <label class="check-item"><input type="checkbox" class="rfi-cb" checked><span>UBO photo ID — DOB redacted on certificate of incorporation</span></label>
+    <label class="check-item"><input type="checkbox" class="rfi-cb" checked><span>Clarify business activity scope (design vs fabrication)</span></label>
+
+    <div class="sec-lbl">Auto-drafted email <span style="color:var(--mute);font-weight:500;text-transform:none;letter-spacing:0">· editable</span></div>
+    <div class="fld"><label>To</label><input id="rfiTo" value="compliance@hanwei-tech.cn"></div>
+    <div class="fld"><label>Subject</label><input value="Beijing Hanwei Tech — additional information required for onboarding (Case 60c5a49e)"></div>
+    <div class="fld"><label>Message</label><textarea rows="13">Dear Beijing Hanwei Tech compliance team,
+
+Thank you for your onboarding submission. To complete our review we need a few additional items:
+
+1. Audited financial statements supporting the declared annual transaction volume.
+2. A source of funds statement covering the expected transaction activity.
+3. A clear photo ID for the beneficial owner — the date of birth on the certificate of incorporation you provided was redacted.
+4. Confirmation of your business activity scope. The certificate references "design & fabrication"; please confirm whether fabrication is conducted in-house.
+
+Please reply with the documents attached within 10 business days. Your application is on hold pending receipt.
+
+Kind regards,
+KYC Onboarding Team</textarea></div>
+  </div>
+  <div class="drawer-f"><button class="btn btn-sm" onclick="closeAll()">Cancel</button>
+    <button class="btn btn-sm" onclick="toast('Draft saved')">Save draft</button>
+    <button class="btn btn-sm btn-primary" onclick="sendRFI()"><i data-lucide="send"></i> Send &amp; pause case</button></div>
+</div>
+
+<div class="toast" id="toast"><i data-lucide="circle-check"></i> <span id="toast-msg"></span></div>
+
+<script>
+  document.querySelectorAll('td.agent-nm').forEach(function(td){
+    var name = td.textContent.trim();
+    td.innerHTML = '<span class="agent-cell"><span class="aic"><i data-lucide="sparkles"></i></span>'+name+'</span>';
+  });
+
+  function tog(el){ el.classList.toggle('open'); }
+  let tt;
+  function toast(msg){
+    const t=document.getElementById('toast'); document.getElementById('toast-msg').textContent=msg;
+    t.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),2800);
+  }
+
+  /* ---- drawers ---- */
+  const scrim=document.getElementById('scrim');
+  function openDrawer(id){ document.getElementById(id).classList.add('show'); scrim.classList.add('show'); }
+  function closeAll(){ document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('show')); scrim.classList.remove('show'); }
+  scrim.onclick=closeAll;
+
+  /* ---- evidence (declared vs extracted, highlighted source) ---- */
+  const cmp = `<div class="sec-lbl" style="margin-top:18px">Declared vs extracted (OCR)</div>
+    <table class="cmp"><thead><tr><th>Field</th><th>Declared</th><th>Extracted</th><th style="width:54px">Match</th></tr></thead><tbody>
+    <tr><td class="mono">legal_name</td><td>Beijing Hanwei Tech</td><td>Beijing Hanwei Tech</td><td class="yes">✓</td></tr>
+    <tr><td class="mono">registration_number</td><td>REG-CN-2019-4471</td><td>REG-CN-2019-4471</td><td class="yes">✓</td></tr>
+    <tr><td class="mono">business_description</td><td>Semiconductor design</td><td>Semiconductor design &amp; fabrication</td><td class="warn2">review</td></tr></tbody></table>`;
+  const EV = {
+    cert: { t:'Certificate of incorporation', s:'p.1 · company particulars',
+      b:`<div class="docframe"><div class="docttl">Certificate of incorporation</div>
+        Company name: <b>Beijing Hanwei Tech Co., Ltd.</b><br>
+        Registration number: <b>REG-CN-2019-4471</b><br>
+        Date of incorporation: 14 Mar 2019<br>
+        Registered office: Haidian District, Beijing, CN<br>
+        Principal activity: <span class="hl">Semiconductor design &amp; fabrication</span><br>
+        Director / UBO: James Robert Chen · DOB: <span class="redact">redacted</span></div>
+        <p style="font-size:12px;color:var(--mute);margin:12px 0 0">Why flagged: principal activity classifies as high-risk industry under policy pack v1; UBO date of birth is redacted and needs primary-ID verification.</p>${cmp}` },
+    financials: { t:'Audited financials', s:'income statement · p.3',
+      b:`<div class="docframe"><div class="docttl">Statement of income — FY2025</div>
+        Revenue: 412,800,000 CNY<br>
+        Cross-border settlements: <span class="hl">~ 1,240 transactions · 318,000,000 CNY</span><br>
+        Net profit: 47,200,000 CNY<br>
+        Auditor: (signed) — p.7</div>
+        <p style="font-size:12px;color:var(--mute);margin:12px 0 0">Why flagged: declared annual volume exceeds the very-high threshold in the rules engine. Cross-check this figure against the intake declaration before clearing.</p>` },
+    jurisdiction: { t:'Org profile — jurisdiction', s:'derived field · no source PDF',
+      b:`<div class="docframe"><div class="docttl">Structured org record</div>
+        incorporation_country = <span class="hl">CN</span><br>
+        payment_corridor = CN → US<br>
+        on_corridor_watchlist = true</div>
+        <p style="font-size:12px;color:var(--mute);margin:12px 0 0">No uploaded file proves the corridor — it is derived from structured fields, so this opens the editable Overview record rather than a PDF.</p>` },
+    screening: { t:'Screening match — adverse media', s:'Sarah Michelle Chen',
+      b:`<div class="sec-lbl" style="margin-top:0">Subject vs matched record</div>
+        <table class="cmp"><thead><tr><th>Attribute</th><th>Subject (case party)</th><th>Matched record</th><th style="width:54px">Agree</th></tr></thead><tbody>
+        <tr><td>Name</td><td>Sarah Michelle Chen</td><td>Sarah M. Chen</td><td class="warn2">~</td></tr>
+        <tr><td>DOB</td><td>1984-07-02</td><td>unknown</td><td class="warn2">?</td></tr>
+        <tr><td>Nationality</td><td>SG</td><td>US</td><td style="color:var(--red);font-weight:700">✗</td></tr>
+        <tr><td>List</td><td>—</td><td>adverse_media (news)</td><td>—</td></tr></tbody></table>
+        <p style="font-size:12px;color:var(--mute);margin:12px 0 0">Match score 62 · name-only. Nationality differs and DOB is unconfirmed — assessed likely false positive. Confirm disposition before escalation.</p>` }
+  };
+  function evKey(name){
+    if(/audited_financials/.test(name)) return 'financials';
+    if(/Jurisdiction|Overview/.test(name)) return 'jurisdiction';
+    if(/Screening/.test(name)) return 'screening';
+    return 'cert';
+  }
+  function openFile(e,name){ if(e) e.stopPropagation();
+    const k=evKey(name), d=EV[k];
+    document.getElementById('evTitle').textContent=d.t;
+    document.getElementById('evSub').textContent=d.s;
+    document.getElementById('evBody').innerHTML=d.b;
+    openDrawer('dwEvidence'); lucide.createIcons();
+  }
+
+  /* ---- per-finding structured disposition + reason codes ---- */
+  const REASONS=['— select reason code —','Confirmed false positive','Name match only — no other identifiers','Verified against primary evidence','Within risk appetite','Requires enhanced due diligence','Requires client information','Data quality issue'];
+  document.querySelectorAll('.finding').forEach(function(f){
+    const body=f.querySelector('.finding-b'); if(!body) return;
+    const d=document.createElement('div'); d.className='dispo';
+    let opts=REASONS.map((r,i)=>`<option value="${i}" ${i?'':'disabled selected'}>${r}</option>`).join('');
+    d.innerHTML=`<span class="dispo-lbl">Operator disposition</span>
+      <div class="dispo-btns">
+        <button class="db" data-d="Accept">Accept</button>
+        <button class="db" data-d="Override">Override</button>
+        <button class="db" data-d="Request info">Request info</button>
+        <button class="db danger" data-d="Escalate">Escalate</button>
+      </div>
+      <div class="reason"><select>${opts}</select></div>
+      <span class="dispo-status"></span>`;
+    body.appendChild(d);
+    d.addEventListener('click',e=>e.stopPropagation());
+    const sel=d.querySelector('select'), reasonWrap=d.querySelector('.reason'), status=d.querySelector('.dispo-status');
+    d.querySelectorAll('.db').forEach(btn=>btn.onclick=()=>{
+      d.querySelectorAll('.db').forEach(x=>x.classList.remove('sel'));
+      btn.classList.add('sel'); reasonWrap.classList.add('show'); stamp();
+      if(btn.dataset.d==='Request info') openDrawer('dwRFI');
+    });
+    sel.onchange=stamp;
+    function stamp(){
+      const b=d.querySelector('.db.sel'); if(!b) return;
+      const rc = sel.value>0 ? sel.options[sel.selectedIndex].text : 'reason code required';
+      status.classList.add('show');
+      status.innerHTML='<i data-lucide="circle-check" style="width:14px;height:14px;color:var(--green)"></i> '+b.dataset.d+' · '+rc+' · analyst · '+stampTime();
+      let tag=f.querySelector('.finding-h .dtag');
+      if(!tag){ tag=document.createElement('span'); tag.className='dtag'; f.querySelector('.finding-h .chev').before(tag); }
+      tag.textContent=b.dataset.d;
+      lucide.createIcons();
+    }
+  });
+  function stampTime(){ const n=new Date(); return n.getHours()+':'+String(n.getMinutes()).padStart(2,'0'); }
+
+  /* ---- downstream: maker-checker, EDD, RFI ---- */
+  function submitDecision(type){
+    document.getElementById('mcText').textContent=type+' submitted by analyst (maker).';
+    document.getElementById('mcBanner').classList.add('show');
+    document.getElementById('rfiBanner').classList.remove('show');
+    toast(type+' submitted — awaiting second approval');
+  }
+  function checkerApprove(){
+    document.getElementById('mcBanner').classList.remove('show');
+    toast('Decision finalized by checker · recorded to audit trail');
+  }
+  function createEDD(){ closeAll(); toast('EDD case created · assigned to Priya Nair · due 14 Jun 2026'); }
+  function sendRFI(){
+    const items=[...document.querySelectorAll('.rfi-cb:checked')].map(c=>c.parentElement.textContent.trim());
+    document.getElementById('rfiCount').textContent=items.length;
+    document.getElementById('rfiItems').innerHTML=items.map(i=>'· '+i).join('<br>');
+    document.getElementById('rfiBanner').classList.add('show');
+    closeAll(); toast('Request sent to '+document.getElementById('rfiTo').value+' · case paused');
+  }
+  function rfiReceived(){
+    document.getElementById('rfiBanner').classList.remove('show');
+    toast('Documents received · case resumed · re-running pipeline');
+  }
+
+  lucide.createIcons();
+</script>
+</body>
+</html>
