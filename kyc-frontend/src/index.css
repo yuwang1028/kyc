@@ -1,0 +1,116 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:wght@400;500;700&family=Roboto:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+/*
+ * Valley KYC Concierge — design tokens lifted from valley-hr-demo.
+ * Navy (#002c4e) primary + Valley yellow (#f3d01c) accent.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-surface-mint: var(--surface-mint);
+  --color-surface-sage: var(--surface-sage);
+  --color-surface-rose: var(--surface-rose);
+  --color-surface-fog: var(--surface-fog);
+  --color-surface-deep: var(--accent-green-deep);
+  --color-surface-navy: var(--accent-navy);
+
+  --color-ink: var(--ink);
+  --color-ink-inverse: var(--ink-inverse);
+  --color-mute: var(--mute);
+  --color-divider: var(--divider);
+
+  --color-accent-green: var(--accent-green);
+  --color-accent-green-deep: var(--accent-green-deep);
+  --color-accent-sage: var(--surface-sage);
+  --color-accent-navy: var(--accent-navy);
+  --color-mark-red: var(--mark-red);
+
+  --color-valley-yellow: var(--valley-yellow);
+  --color-valley-cream: var(--valley-cream);
+
+  --font-sans: "DM Sans", sans-serif;
+  --font-display: "Cormorant Garamond", "Times New Roman", serif;
+
+  --radius-flat: 0px;
+  --radius-pill: 9999px;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #323a3f;
+
+  --ink: #323a3f;
+  --ink-inverse: #ffffff;
+  --mute: #5c646c;
+  --divider: #dee2e6;
+
+  --surface-mint: #e6eaed;
+  --surface-sage: #f3d01c;
+  --surface-rose: #fefae8;
+  --surface-fog:  #f2f3f4;
+
+  --accent-green:      #002c4e;
+  --accent-green-deep: #112e44;
+  --accent-navy:       #002c4e;
+  --mark-red:          #b8232f;
+
+  --valley-yellow: #f3d01c;
+  --valley-cream:  #fefae8;
+  --valley-slate:  #788995;
+  --valley-blue:   #0042a5;
+
+  --motion-duration-pulse: 1800ms;
+}
+
+html, body {
+  background: var(--background);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Pill press feedback used on every interactive button-row in the app. */
+.ui-pill {
+  transition: background-color 150ms ease, color 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+}
+.ui-pill:active { transform: scale(0.97); }
+
+/* AI pulse — agent-is-thinking heartbeat. */
+@keyframes ai-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.18); opacity: 0.65; }
+}
+.ai-pulse, .hr-pulse {
+  animation: ai-pulse var(--motion-duration-pulse) ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* Streaming caret. */
+@keyframes ai-caret {
+  0%, 50%   { border-color: currentColor; }
+  50.01%, 100% { border-color: transparent; }
+}
+.ai-caret { border-right: 2px solid currentColor; animation: ai-caret 600ms steps(1, end) infinite; padding-right: 2px; }
+
+/* Stagger list — each child fades up. */
+@keyframes ai-stream {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ai-stream {
+  opacity: 0;
+  animation: ai-stream 420ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Spring-in entrance for hero / panels. */
+@keyframes ai-spring {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.ai-spring {
+  opacity: 0;
+  animation: ai-spring 420ms cubic-bezier(0.34, 1.32, 0.64, 1) forwards;
+}

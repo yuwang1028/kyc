@@ -153,6 +153,19 @@ export type WorkflowRunResult = {
   phases: WorkflowPhase[];
 };
 
+export type WorkflowRunStatus = {
+  run_id: string;
+  case_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  current_phase: string | null;
+  elapsed_seconds: number | null;
+  slow_warning: boolean;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  result: WorkflowRunResult | null;
+};
+
 export type DashboardStats = {
   total_cases: number;
   by_status: Record<string, number>;
@@ -200,10 +213,13 @@ export const api = {
     }),
 
   runWorkflow: (id: string, stopOnIncompleteIntake = true) =>
-    request<WorkflowRunResult>(`/cases/${id}/workflow/run`, {
-      method: "POST",
-      body: JSON.stringify({ stop_on_incomplete_intake: stopOnIncompleteIntake }),
-    }),
+    request<{ run_id: string; status: string; already_running: boolean }>(
+      `/cases/${id}/workflow/run`,
+      { method: "POST", body: JSON.stringify({ stop_on_incomplete_intake: stopOnIncompleteIntake }) }
+    ),
+
+  getWorkflowRun: (caseId: string, runId: string) =>
+    request<WorkflowRunStatus>(`/cases/${caseId}/workflow/runs/${runId}`),
 
   addDocument: (
     id: string,

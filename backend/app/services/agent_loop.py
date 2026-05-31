@@ -15,14 +15,15 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import settings
-from app.models import Case
+from app.models import AgentWorkingMemory, Case
 from app.services.agent_todo import TodoManager
 from app.services.agent_tools import AgentToolContext, execute_kyc_tool, kyc_tools_as_openai
 from app.services.llm_gateway import get_llm_gateway
@@ -92,6 +93,25 @@ def run_kyc_case_agent_loop(
         case=case,
         todo_manager=todo_manager,
     )
+
+    # Working memory: one row per session, upserted on every todo call
+    session_id = uuid4()
+    _working_memory = AgentWorkingMemory(
+        id=session_id,
+        case_id=case_id,
+        session_id=session_id,
+        todos=[],
+        turn=0,
+    )
+    session.add(_working_memory)
+    session.commit()
+
+    def _persist_todos(turn_num: int) -> None:
+        _working_memory.todos = todo_manager.snapshot()
+        _working_memory.turn = turn_num
+        _working_memory.updated_at = datetime.utcnow()
+        session.add(_working_memory)
+        session.commit()
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _SYSTEM},
@@ -185,6 +205,7 @@ def run_kyc_case_agent_loop(
 
                 if name == "todo":
                     used_todo = True
+                    _persist_todos(turn)
 
             messages.extend(tool_result_msgs)
 

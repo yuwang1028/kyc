@@ -115,6 +115,37 @@ def _llm_extract_from_text(text: str, document_type: str) -> dict[str, Any]:
     return parsed
 
 
+def _llm_extract_ubo_parties(text: str) -> list[dict[str, Any]]:
+    """Extract all UBO/party entries from a UBO declaration using the local LLM."""
+    gateway = get_llm_gateway()
+    if not gateway.enabled:
+        return []
+    system = (
+        "You are a KYC compliance specialist. Extract every Ultimate Beneficial Owner (UBO) "
+        "listed in this declaration, including those referenced in ownership summary tables. "
+        "Return JSON with a single key 'parties' whose value is an array of objects, each with: "
+        "full_name (string), nationality (ISO-2 code, e.g. 'US'), "
+        "ownership_percentage (float or null), is_managing_member (bool), pep (bool). "
+        "Include ALL individuals — do not skip any row from ownership tables."
+    )
+    user = f"UBO Declaration document text:\n\n{text[:4000]}\n\nReturn JSON only."
+    try:
+        parsed, _ = gateway.generate_json(
+            task_kind="ocr_field_normalization",
+            system_instruction=system,
+            user_prompt=user,
+            temperature=0.1,
+            max_output_tokens=1024,
+        )
+        if not isinstance(parsed, dict):
+            return []
+        parties = parsed.get("parties", [])
+        return parties if isinstance(parties, list) else []
+    except Exception as exc:
+        logger.warning("UBO party extraction failed: %s", exc)
+        return []
+
+
 def process_pdf_file(
     *,
     abs_path: Path,
@@ -131,7 +162,6 @@ def process_pdf_file(
     llm_fields: dict[str, Any] = {}
 
     if len(text) < _MIN_TEXT_CHARS:
-        # Scanned PDF: try LLM extraction on what little text we have
         try:
             llm_fields = _llm_extract_from_text(text or "(no text extracted)", document_type)
             ocr_method = "ollama"
@@ -154,6 +184,12 @@ def process_pdf_file(
         "incorporation_country": heuristics.get("incorporation_country")
         or llm_fields.get("incorporation_country"),
     }
+
+    if document_type == "ubo_declaration" and text:
+        ubo_parties = _llm_extract_ubo_parties(text)
+        if ubo_parties:
+            merged["ubo_parties"] = ubo_parties
+
     return merged
 
 

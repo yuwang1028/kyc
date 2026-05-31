@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import get_session
 from app.models import (
     AgentRun,
+    AgentWorkingMemory,
     AuditEvent,
     Case,
     CaseContact,
@@ -24,6 +25,7 @@ from app.models import (
     ScreeningResult,
     Task,
     VerificationResult,
+    WorkflowRun,
 )
 from app.api.llm_routes import router as llm_router
 from app.schemas import (
@@ -57,7 +59,8 @@ from app.services.agent_llm import model_name_from_output
 from app.services.document_ocr import process_pdf_file
 from app.services.document_storage import resolve_upload_path, save_case_pdf
 from app.services.serialize import dump_model, json_safe
-from app.services.workflow import run_onboarding_workflow, schedule_review_cycle
+from app.services.workflow import schedule_review_cycle
+from app.services.workflow_runner import execute_workflow_task, get_or_create_workflow_run
 
 router = APIRouter()
 router.include_router(llm_router)
@@ -382,30 +385,84 @@ def create_ownership_structure(
 @router.post("/cases/{case_id}/workflow/run")
 def run_case_workflow(
     case_id: UUID,
+    background_tasks: BackgroundTasks,
     payload: WorkflowRunRequest | None = None,
     session: Session = Depends(get_session),
 ):
     """
-    Run full onboarding pipeline: intake → verification → screening → ownership → risk → summary.
-    Stops early if intake is incomplete (unless `stop_on_incomplete_intake` is false).
+    Launch onboarding pipeline asynchronously. Returns {run_id, status} immediately.
+    Poll GET /cases/{id}/workflow/runs/{run_id} for progress and final result.
+    Idempotent: if a run is already active for this case, returns the existing run_id.
     """
     if not session.get(Case, case_id):
         raise HTTPException(status_code=404, detail="Case not found")
+
     body = payload or WorkflowRunRequest()
-    try:
-        result = run_onboarding_workflow(
-            session,
-            case_id,
-            stop_on_incomplete_intake=body.stop_on_incomplete_intake,
-        )
-    except ValueError as e:
-        if str(e) == "case_not_found":
-            raise HTTPException(status_code=404, detail="Case not found") from e
-        if str(e) == "organization_not_found":
-            raise HTTPException(status_code=400, detail="Case has no organization") from e
-        raise
-    session.commit()
-    return result
+    run, is_new = get_or_create_workflow_run(
+        session,
+        case_id,
+        stop_on_incomplete_intake=body.stop_on_incomplete_intake,
+    )
+
+    if is_new:
+        background_tasks.add_task(execute_workflow_task, run.id)
+
+    return {
+        "run_id": str(run.id),
+        "status": run.status,
+        "already_running": not is_new,
+    }
+
+
+@router.get("/cases/{case_id}/workflow/runs/latest")
+def get_latest_workflow_run(
+    case_id: UUID,
+    session: Session = Depends(get_session),
+):
+    """Return the most recent workflow run for this case, or 404 if none exists."""
+    run = session.exec(
+        select(WorkflowRun)
+        .where(WorkflowRun.case_id == case_id)
+        .order_by(WorkflowRun.created_at.desc())
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="No workflow runs found")
+    return {
+        "run_id": str(run.id),
+        "case_id": str(run.case_id),
+        "status": run.status,
+        "current_phase": run.current_phase,
+        "elapsed_seconds": run.elapsed_seconds,
+        "slow_warning": run.slow_warning,
+        "error": run.error,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "result": run.result_payload,
+    }
+
+
+@router.get("/cases/{case_id}/workflow/runs/{run_id}")
+def get_workflow_run(
+    case_id: UUID,
+    run_id: UUID,
+    session: Session = Depends(get_session),
+):
+    """Poll workflow run status. result_payload is populated when status == 'completed'."""
+    run = session.get(WorkflowRun, run_id)
+    if not run or run.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    return {
+        "run_id": str(run.id),
+        "case_id": str(run.case_id),
+        "status": run.status,
+        "current_phase": run.current_phase,
+        "elapsed_seconds": run.elapsed_seconds,
+        "slow_warning": run.slow_warning,
+        "error": run.error,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "result": run.result_payload,
+    }
 
 
 @router.get("/dashboard/stats")
@@ -462,6 +519,51 @@ def list_documents(case_id: UUID, session: Session = Depends(get_session)):
     ).all()
 
 
+_ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
+_MIME_MAP = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
+
+def _auto_register_ubo_parties(
+    session: Session, case_id: UUID, ubo_parties: list[dict]
+) -> int:
+    """Create Party + CaseParty rows from LLM-extracted UBO list. Skip duplicates by name."""
+    existing_names = {
+        (session.get(Party, link.party_id).legal_name or "").strip().lower()
+        for link in session.exec(select(CaseParty).where(CaseParty.case_id == case_id)).all()
+        if link.party_id and session.get(Party, link.party_id)
+    }
+    registered = 0
+    for p in ubo_parties:
+        name = (p.get("full_name") or "").strip()
+        if not name or name.lower() in existing_names:
+            continue
+        pct = p.get("ownership_percentage")
+        is_managing = bool(p.get("is_managing_member"))
+        relation = "ubo_candidate" if (pct or 0) >= 25 else "shareholder"
+        party = Party(
+            party_type="individual",
+            legal_name=name,
+            nationality=p.get("nationality") or None,
+        )
+        session.add(party)
+        session.flush()
+        link = CaseParty(
+            case_id=case_id,
+            party_id=party.id,
+            relation_type=relation,
+            ownership_percentage=float(pct) if pct is not None else None,
+            control_flag=is_managing,
+        )
+        session.add(link)
+        existing_names.add(name.lower())
+        registered += 1
+    return registered
+
+
 @router.post("/cases/{case_id}/documents/upload", status_code=201)
 async def upload_document_pdf(
     case_id: UUID,
@@ -469,17 +571,18 @@ async def upload_document_pdf(
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
 ):
-    """Upload a PDF, store locally, run OCR, and persist extracted fields."""
+    """Upload a PDF/PNG/JPG, store locally, run OCR on PDFs, and persist extracted fields."""
     case = session.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-
-    content_type = (file.content_type or "").lower()
-    if content_type and content_type not in ("application/pdf", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail=f"Unsupported content type: {content_type}")
+    fname = (file.filename or "").lower()
+    ext = next((e for e in _ALLOWED_EXTENSIONS if fname.endswith(e)), None)
+    if not ext:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(_ALLOWED_EXTENSIONS)}",
+        )
 
     raw = await file.read()
     max_bytes = settings.max_upload_bytes
@@ -488,21 +591,32 @@ async def upload_document_pdf(
             status_code=413,
             detail=f"File too large (max {max_bytes // (1024 * 1024)} MB)",
         )
-    if not raw.startswith(b"%PDF"):
-        raise HTTPException(status_code=400, detail="File is not a valid PDF")
 
     rel_path, abs_path = save_case_pdf(case_id, file.filename, raw)
+    mime_type = _MIME_MAP.get(ext, "application/octet-stream")
 
-    try:
-        extracted = process_pdf_file(
-            abs_path=abs_path,
-            document_type=document_type,
-            file_name=file.filename,
-        )
-        processing_status = "parsed"
-    except Exception as exc:
-        extracted = json_safe({"error": str(exc), "document_type": document_type})
-        processing_status = "failed"
+    auto_registered_parties = 0
+    if ext == ".pdf":
+        if not raw.startswith(b"%PDF"):
+            raise HTTPException(status_code=400, detail="File is not a valid PDF")
+        try:
+            extracted = process_pdf_file(
+                abs_path=abs_path,
+                document_type=document_type,
+                file_name=file.filename,
+            )
+            processing_status = "parsed"
+            # Auto-register UBO parties extracted from declaration PDFs
+            ubo_parties = extracted.get("ubo_parties") or []
+            if ubo_parties:
+                auto_registered_parties = _auto_register_ubo_parties(session, case_id, ubo_parties)
+        except Exception as exc:
+            extracted = json_safe({"error": str(exc), "document_type": document_type})
+            processing_status = "failed"
+    else:
+        # Image files: stored as-is, no OCR; intake gate treats "uploaded" as satisfying the requirement
+        extracted = json_safe({"document_type": document_type, "file_name": file.filename, "ocr_method": "none"})
+        processing_status = "uploaded"
 
     doc = Document(
         case_id=case.id,
@@ -510,31 +624,62 @@ async def upload_document_pdf(
         document_type=document_type,
         file_name=file.filename,
         file_url=rel_path,
-        mime_type="application/pdf",
+        mime_type=mime_type,
         file_size=len(raw),
         processing_status=processing_status,
         extracted_fields=json_safe(extracted),
     )
     session.add(doc)
+    payload: dict = {
+        "document_type": document_type,
+        "file_name": file.filename,
+        "upload_method": ext.lstrip("."),
+        "processing_status": processing_status,
+    }
+    if auto_registered_parties:
+        payload["auto_registered_ubo_parties"] = auto_registered_parties
     log_event(
         session,
         actor_type="user",
         actor_id="external_customer",
         event_type="document_uploaded",
-        event_payload=json_safe(
-            {
-                "document_type": document_type,
-                "file_name": file.filename,
-                "upload_method": "pdf",
-                "processing_status": processing_status,
-                "ocr_method": extracted.get("ocr_method") if isinstance(extracted, dict) else None,
-            }
-        ),
+        event_payload=json_safe(payload),
         case_id=case.id,
     )
     session.commit()
     session.refresh(doc)
     return doc
+
+
+@router.delete("/cases/{case_id}/documents/{document_id}", status_code=204)
+def delete_document(
+    case_id: UUID,
+    document_id: UUID,
+    session: Session = Depends(get_session),
+):
+    """Delete a document record and its on-disk file."""
+    doc = session.get(Document, document_id)
+    if not doc or doc.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Delete the physical file if it exists
+    path = resolve_upload_path(doc.file_url or "")
+    if path:
+        try:
+            path.unlink()
+        except OSError:
+            pass  # already gone, continue
+
+    log_event(
+        session,
+        actor_type="user",
+        actor_id="external_customer",
+        event_type="document_deleted",
+        event_payload={"document_type": doc.document_type, "file_name": doc.file_name},
+        case_id=case_id,
+    )
+    session.delete(doc)
+    session.commit()
 
 
 @router.get("/cases/{case_id}/documents/{document_id}/file")
@@ -602,32 +747,63 @@ def evaluate_case_risk(case_id: UUID, session: Session = Depends(get_session)):
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    org = session.get(Organization, case.organization_id) if case.organization_id else None
+    docs = session.exec(select(Document).where(Document.case_id == case_id)).all()
     screening = session.exec(select(ScreeningResult).where(ScreeningResult.case_id == case_id)).all()
+    party_links = session.exec(select(CaseParty).where(CaseParty.case_id == case_id)).all()
+
     pep_true_match = any(r.screening_type == "pep" and r.disposition == "true_match" for r in screening)
     sanctions_true_match = any(
         r.screening_type == "sanctions" and r.disposition == "true_match" for r in screening
     )
+    adverse_media_escalated = any(
+        r.screening_type == "adverse_media" and r.disposition == "true_match" for r in screening
+    )
+
+    ubo_parties: list[dict] = []
+    for link in party_links:
+        party_row = session.get(Party, link.party_id) if link.party_id else None
+        if party_row:
+            ubo_parties.append({
+                "party": {"nationality": party_row.nationality, "legal_name": party_row.legal_name},
+                "relation": {
+                    "relation_type": link.relation_type,
+                    "ownership_percentage": link.ownership_percentage,
+                },
+            })
+
+    ownership_rows = session.exec(
+        select(OwnershipStructure)
+        .where(OwnershipStructure.case_id == case_id)
+        .order_by(OwnershipStructure.created_at.desc())
+    ).all()
+    latest_ownership = ownership_rows[0] if ownership_rows else None
+    complexity = float(latest_ownership.complexity_score or 0) if latest_ownership else 0.0
+    unresolved = bool(latest_ownership and latest_ownership.unresolved_flag)
 
     risk = evaluate_risk(
         {
-            "organization_country": case.jurisdiction,
+            "organization_country": case.jurisdiction or (org.incorporation_country if org else None),
+            "incorporation_country": org.incorporation_country if org else None,
+            "jurisdiction": case.jurisdiction,
+            "business_description": org.business_description if org else None,
             "pep_true_match": pep_true_match,
             "sanctions_true_match": sanctions_true_match,
-            "ownership_complexity_score": 30,
+            "adverse_media_escalated": adverse_media_escalated,
+            "ownership_complexity_score": complexity,
+            "ownership_unresolved": unresolved,
+            "documents": [json_safe(dict(d)) for d in docs],
+            "ubo_parties": ubo_parties,
         }
     )
 
     assessment = RiskAssessment(
         case_id=case.id,
-        engine_version="risk-engine-v1",
+        engine_version="risk-engine-v2",
         total_score=risk["total_score"],
         risk_level=risk["risk_level"],
         triggered_rules=risk["triggered_rules"],
-        rationale={
-            "pep_true_match": pep_true_match,
-            "sanctions_true_match": sanctions_true_match,
-            "country": case.jurisdiction,
-        },
+        rationale=risk.get("rationale", {}),
         edd_required=risk["edd_required"],
     )
     session.add(assessment)
@@ -900,7 +1076,7 @@ def run_case_react_agent_loop(
     if not gw.enabled:
         raise HTTPException(
             status_code=503,
-            detail="Vertex AI is not configured (VERTEX_PROJECT_ID / VERTEX_LOCATION / models).",
+            detail="Ollama is not configured. Set OLLAMA_BASE_URL / OLLAMA_MODEL in .env and run: ollama serve && ollama pull qwen2.5:7b",
         )
 
     try:

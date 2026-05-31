@@ -243,16 +243,42 @@ def run_onboarding_workflow(
     sanctions_true = any(
         r.screening_type == "sanctions" and r.disposition == "true_match" for r in screening_rows
     )
+    adverse_media_escalated = any(
+        r.screening_type == "adverse_media" and r.disposition == "true_match" for r in screening_rows
+    )
     complexity = float(ownership_out.get("complexity_score") or ownership_row.complexity_score or 0)
-    unresolved = bool(ownership_out.get("unresolved_ownership_issues"))
+    unresolved = bool(
+        ownership_out.get("unresolved_ownership_issues") and
+        len(ownership_out.get("unresolved_ownership_issues") or []) > 0
+    )
+
+    # Build UBO party list from DB for cross-border / multi-jurisdiction checks
+    party_links = session.exec(select(CaseParty).where(CaseParty.case_id == case_id)).all()
+    ubo_parties: list[dict] = []
+    for link in party_links:
+        party_row = session.get(Party, link.party_id) if link.party_id else None
+        if party_row:
+            ubo_parties.append({
+                "party": {"nationality": party_row.nationality, "legal_name": party_row.legal_name},
+                "relation": {
+                    "relation_type": link.relation_type,
+                    "ownership_percentage": link.ownership_percentage,
+                },
+            })
 
     risk = evaluate_risk(
         {
             "organization_country": case.jurisdiction or org.incorporation_country,
+            "incorporation_country": org.incorporation_country,
+            "jurisdiction": case.jurisdiction,
+            "business_description": org.business_description,
             "pep_true_match": pep_true,
             "sanctions_true_match": sanctions_true,
+            "adverse_media_escalated": adverse_media_escalated,
             "ownership_complexity_score": complexity,
-            "ownership_unresolved": unresolved and len(ownership_out.get("unresolved_ownership_issues") or []) > 0,
+            "ownership_unresolved": unresolved,
+            "documents": [dump_model(d) for d in docs],
+            "ubo_parties": ubo_parties,
         }
     )
     assessment = RiskAssessment(

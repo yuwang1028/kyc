@@ -6,11 +6,7 @@ from app.services.llm_tasks import ModelTier, tier_for_task
 POLICY_PACKS = {
     "v1-us-business-onboarding": {
         "required_fields": ["legal_name", "registration_number", "incorporation_country"],
-        "required_documents": {
-            "certificate_of_incorporation",
-            "tax_id_proof",
-            "ownership_chart",
-        },
+        "required_documents": set(),  # no mandatory doc types; any uploaded evidence is accepted
     }
 }
 
@@ -51,22 +47,16 @@ def _normalize_name(value: str | None) -> str:
 
 
 def _satisfied_document_types(documents: list[dict]) -> set[str]:
-    latest_by_type: dict[str, dict] = {}
+    """Return doc types that have at least one non-failed uploaded document."""
+    satisfied: set[str] = set()
     for doc in documents or []:
         doc_type = doc.get("document_type")
         if not doc_type:
             continue
-        current = latest_by_type.get(doc_type)
-        doc_created = str(doc.get("created_at") or "")
-        current_created = str(current.get("created_at") or "") if current else ""
-        if current is None or doc_created >= current_created:
-            latest_by_type[doc_type] = doc
-
-    return {
-        doc_type
-        for doc_type, doc in latest_by_type.items()
-        if (doc.get("processing_status") or "").lower() == "parsed"
-    }
+        status = (doc.get("processing_status") or "uploaded").lower()
+        if status != "failed":
+            satisfied.add(doc_type)
+    return satisfied
 
 
 def _intake_rules(case_snapshot: dict) -> dict:

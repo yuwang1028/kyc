@@ -271,3 +271,38 @@ class ReviewCycle(SQLModel, table=True):
     status: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkflowRun(SQLModel, table=True):
+    """Async workflow execution record — one row per POST /workflow/run call."""
+
+    __tablename__ = "workflow_runs"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    case_id: UUID
+    # pending → running → completed | failed
+    status: str = "pending"
+    stop_on_incomplete_intake: bool = True
+    current_phase: Optional[str] = None
+    result_payload: Optional[dict] = Field(default=None, sa_column=_json_column())
+    error: Optional[str] = None
+    elapsed_seconds: Optional[float] = None
+    slow_warning: bool = False  # True when elapsed > SLOW_THRESHOLD_SECONDS
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AgentWorkingMemory(SQLModel, table=True):
+    """Persistent scratchpad for the ReAct agent loop (todo list per session)."""
+
+    __tablename__ = "agent_working_memory"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    case_id: UUID
+    # session_id ties to the AgentRun.id that owns this loop execution
+    session_id: UUID
+    todos: Optional[Any] = Field(default_factory=list, sa_column=_json_column())
+    turn: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

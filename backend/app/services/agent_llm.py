@@ -1,10 +1,13 @@
 """
-LLM enrichment for PRD workflow agents (Vertex Gemini via LLMGateway).
+LLM enrichment for PRD workflow agents (Ollama/Qwen via LLMGateway).
 
 Hybrid design:
 - Rule engine produces deterministic gates (missing docs, scores, hit lists).
 - LLM adds reasoning, narratives, and reviewer-facing text.
-- When Vertex is unavailable, agents fall back to rules-only (fast path).
+- When Ollama is unavailable or circuit is open, agents fall back to rules-only.
+
+Token usage (tokens_in / tokens_out) is captured from each LLM call and included
+in the agent output stored in AgentRun.output_payload.
 """
 
 from __future__ import annotations
@@ -43,8 +46,8 @@ def model_name_from_output(output: dict[str, Any]) -> str:
     if output.get("llm_used") and output.get("llm_model"):
         return str(output["llm_model"])
     if output.get("llm_error"):
-        return "rules-mvp (llm-failed)"
-    return "rules-mvp"
+        return "rules-only (llm-failed)"
+    return "rules-only"
 
 
 def _compact_json(data: Any) -> str:
@@ -63,7 +66,12 @@ def enrich_with_llm(
     preserve_keys: list[str],
     user_notes: str = "",
 ) -> dict[str, Any]:
-    """Call Gemini; merge JSON result onto baseline without overwriting preserved keys."""
+    """Call Ollama/Qwen; merge JSON result onto baseline without overwriting preserved keys.
+
+    On success adds: llm_used=True, source="llm+rules", llm_model, llm_latency_ms,
+    llm_task, llm_tokens_in, llm_tokens_out.
+    On failure adds: llm_used=False, source="rules", llm_error.
+    """
     global _last_llm_failure
     merged: dict[str, Any] = {**baseline, "llm_used": False, "source": "rules"}
     if not workflow_llm_agents_enabled():
@@ -100,8 +108,11 @@ def enrich_with_llm(
         out["llm_model"] = raw.model_id
         out["llm_latency_ms"] = round(raw.latency_ms, 1)
         out["llm_task"] = task_kind
+        out["llm_tokens_in"] = raw.tokens_in
+        out["llm_tokens_out"] = raw.tokens_out
         _last_llm_failure = None
         return out
+
     except Exception as exc:
         _last_llm_failure = str(exc)
         logger.warning("LLM agent %s failed, using rules only: %s", task_kind, exc)
