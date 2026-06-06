@@ -293,6 +293,25 @@ class WorkflowRun(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class LLMCache(SQLModel, table=True):
+    """LLM response cache — avoids re-calling expensive agent prompts for identical inputs."""
+
+    __tablename__ = "llm_cache"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    # SHA-256 of (provider + model + prompt_text)
+    prompt_hash: str = Field(index=True, max_length=64)
+    provider: str
+    model: str
+    agent_name: str
+    response_text: str
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Cache entries expire after this timestamp (NULL = never)
+    expires_at: Optional[datetime] = None
+
+
 class AgentWorkingMemory(SQLModel, table=True):
     """Persistent scratchpad for the ReAct agent loop (todo list per session)."""
 
@@ -306,3 +325,4 @@ class AgentWorkingMemory(SQLModel, table=True):
     turn: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+

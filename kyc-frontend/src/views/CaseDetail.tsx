@@ -7,7 +7,7 @@ import { AIDot } from "@/components/ai/AIDot";
 import { SpringIn } from "@/components/ai/SpringIn";
 import { StaggerList } from "@/components/ai/StaggerList";
 import { StreamingText } from "@/components/ai/StreamingText";
-import { api, type ApiCaseDetail, type WorkflowRunStatus } from "@/lib/api";
+import { api, type ApiCaseDetail, type WorkflowRunStatus, type LLMProviderSettings, type LLMInfraStatus } from "@/lib/api";
 import {
   ShieldAlert,
   Sparkles,
@@ -680,7 +680,16 @@ type PhaseOutput = Record<string, unknown>;
 type WfResult = NonNullable<WorkflowRunStatus["result"]>;
 
 function str(v: unknown): string { return typeof v === "string" ? v : ""; }
-function arr(v: unknown): string[] { return Array.isArray(v) ? v.map(String) : []; }
+function toStr(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return [o.issue, o.description, o.action, o.required_action, o.impact]
+      .filter(Boolean).map(String).join(" — ") || JSON.stringify(v);
+  }
+  return String(v ?? "");
+}
+function arr(v: unknown): string[] { return Array.isArray(v) ? v.map(toStr) : []; }
 
 function WorkflowResult({ result }: { result: WfResult }) {
   const phaseMap = Object.fromEntries(result.phases.map((p) => [p.phase, p.output as PhaseOutput]));
@@ -858,6 +867,138 @@ function WorkflowResult({ result }: { result: WfResult }) {
   );
 }
 
+/* ── LLM Provider selector ────────────────────────────────────────── */
+type ProviderKey = "ollama" | "vertex" | "vllm" | "nim";
+
+const PROVIDER_LABELS: Record<ProviderKey, string> = {
+  ollama: "Local — Ollama",
+  vertex: "Google Vertex AI",
+  vllm:   "vLLM (NVIDIA GPU)",
+  nim:    "NVIDIA NIM",
+};
+
+function ModelSelector({
+  providerCfg,
+  selected,
+  onChange,
+}: {
+  providerCfg: LLMProviderSettings | null;
+  selected: ProviderKey;
+  onChange: (p: ProviderKey) => void;
+}) {
+  const ollamaModel = providerCfg?.ollama.model ?? "qwen2.5:7b";
+  const vertexOk    = providerCfg?.vertex.configured ?? false;
+  const vllmOk      = providerCfg?.vllm.configured   ?? false;
+  const nimOk       = providerCfg?.nim.configured     ?? false;
+
+  function subtitle(p: ProviderKey): string {
+    if (p === "ollama") return ollamaModel;
+    if (p === "vertex") return vertexOk ? "2.5-flash-lite / 2.5-flash / 2.5-pro" : "not configured";
+    if (p === "vllm")   return vllmOk   ? `${providerCfg?.vllm.model ?? "llama-3.1"} · PagedAttention` : "set VLLM_BASE_URL in .env";
+    if (p === "nim")    return nimOk     ? "8B / 70B / 405B · Llama 3.1" : "not configured";
+    return "not configured";
+  }
+
+  const providers: ProviderKey[] = ["ollama", "vertex", "vllm", "nim"];
+  const isDisabled = (p: ProviderKey) =>
+    (p === "vertex" && !vertexOk) ||
+    (p === "vllm"   && !vllmOk)   ||
+    (p === "nim"    && !nimOk);
+
+  return (
+    <div className="grid grid-cols-2 gap-2 mb-4">
+      {providers.map((p) => {
+        const active   = selected === p;
+        const disabled = isDisabled(p);
+        return (
+          <button
+            key={p}
+            onClick={() => !disabled && onChange(p)}
+            disabled={disabled}
+            className={
+              "rounded-md border-2 px-3 py-2.5 text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
+              (active
+                ? "border-surface-deep bg-surface-deep text-ink-inverse"
+                : "border-divider bg-surface-fog hover:border-surface-deep/50 text-ink")
+            }
+          >
+            <div className="text-[12px] font-bold mb-0.5">{PROVIDER_LABELS[p]}</div>
+            <div className={`text-[11px] ${active ? "text-ink-inverse/70" : "text-mute"}`}>
+              {subtitle(p)}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function InfraPanel({ infra }: { infra: LLMInfraStatus | null }) {
+  if (!infra) return null;
+  const CB_COLOR: Record<string, string> = {
+    closed: "#22c55e", open: "#ef4444", "half-open": "#f59e0b",
+  };
+  return (
+    <Panel eyebrow="AI Infrastructure" title="NVIDIA / Provider status" action={<Activity size={14} className="text-surface-deep" />}>
+      <div className="space-y-3 text-[13px]">
+        <div className="flex gap-2 flex-wrap">
+          {Object.entries(infra.providers).map(([name, p]) => (
+            <div key={name} className="border border-divider rounded-md px-3 py-2 bg-surface-fog min-w-[140px]">
+              <div className="font-bold capitalize mb-1">{name}</div>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: CB_COLOR[p.circuit_breaker] ?? "#64748b" }}
+                />
+                <span className="text-mute text-[11px]">{p.circuit_breaker}</span>
+              </div>
+              <div className="text-mute text-[11px] mt-0.5">{p.runtime}</div>
+              {p.model && <div className="text-mute text-[11px] truncate">{p.model}</div>}
+              {!p.configured && <div className="text-[11px] text-amber-500 mt-0.5">not configured</div>}
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <div className="font-bold mb-1 text-mute uppercase text-[11px] tracking-wide">Tier routing</div>
+          <table className="w-full text-[11px] border-collapse">
+            <thead>
+              <tr className="text-mute border-b border-divider">
+                <th className="text-left py-0.5 pr-2">Tier</th>
+                <th className="text-left py-0.5 pr-2">Ollama</th>
+                <th className="text-left py-0.5 pr-2">Vertex</th>
+                <th className="text-left py-0.5">NIM</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(infra.tier_routing).map(([tier, row]) => (
+                <tr key={tier} className="border-b border-divider/50 last:border-0">
+                  <td className="py-0.5 pr-2 font-bold capitalize">{tier}</td>
+                  <td className="py-0.5 pr-2 text-mute">{row.ollama}</td>
+                  <td className="py-0.5 pr-2 text-mute">{row.vertex}</td>
+                  <td className="py-0.5 text-mute">{row.nim}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {Object.keys(infra.prefix_cache.tracker).length > 0 && (
+          <div>
+            <div className="font-bold mb-1 text-mute uppercase text-[11px] tracking-wide">KV Cache (prefix)</div>
+            {Object.entries(infra.prefix_cache.tracker).map(([kind, s]) => (
+              <div key={kind} className="flex justify-between text-[11px] py-0.5">
+                <span className="text-mute capitalize">{kind}</span>
+                <span className="text-green-400">{(s.hit_rate * 100).toFixed(1)}% hit · {s.calls} calls</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 /* ── Agents + Workflow runner ─────────────────────────────────────── */
 const POLL_MS = 2000;
 const PHASE_ORDER = ["intake", "verification", "screening", "ownership", "risk", "review"];
@@ -874,6 +1015,22 @@ function Agents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () =>
   const [runStatus, setRunStatus] = React.useState<WorkflowRunStatus | null>(null);
   const [runError, setRunError] = React.useState<string | null>(null);
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const [providerCfg, setProviderCfg] = React.useState<LLMProviderSettings | null>(null);
+  const [selectedProvider, setSelectedProvider] = React.useState<ProviderKey>("ollama");
+  const [infra, setInfra] = React.useState<LLMInfraStatus | null>(null);
+
+  React.useEffect(() => {
+    api.getLLMProvider().then((cfg) => {
+      setProviderCfg(cfg);
+      setSelectedProvider(cfg.active);
+    }).catch(() => {});
+    api.getLLMInfra().then(setInfra).catch(() => {});
+  }, []);
+
+  async function handleProviderChange(p: ProviderKey) {
+    setSelectedProvider(p);
+    await api.setLLMProvider(p).catch(() => {});
+  }
 
   function stopPolling() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -923,6 +1080,18 @@ function Agents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () =>
 
   return (
     <div className="space-y-3">
+      {/* LLM provider selector */}
+      <Panel eyebrow="AI provider" action={<Sparkles size={14} className="text-surface-deep" />}>
+        <ModelSelector
+          providerCfg={providerCfg}
+          selected={selectedProvider}
+          onChange={handleProviderChange}
+        />
+      </Panel>
+
+      {/* NVIDIA / provider infra status */}
+      <InfraPanel infra={infra} />
+
       {/* Workflow runner */}
       <Panel eyebrow="Onboarding pipeline" action={<Sparkles size={14} className="text-surface-deep" />}>
         <p className="text-[13px] text-mute mb-3">

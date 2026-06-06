@@ -84,6 +84,93 @@ def llm_routing() -> dict[str, Any]:
     }
 
 
+@router.get("/infra")
+def llm_infra() -> dict[str, Any]:
+    """
+    Full AI infrastructure status — all 4 providers, circuit breakers,
+    tier-to-model mapping, and vLLM KV prefix cache hit rates.
+    No auth required (read-only telemetry for the dashboard).
+    """
+    from app.services.llm_gateway import (
+        OllamaGateway, VertexAIGateway, VLLMGateway, NIMGateway,
+        VERTEX_MODELS, NIM_MODELS,
+        get_circuit_breaker_state, get_prefix_cache_stats,
+    )
+    from app.services.llm_provider import get_provider, is_vllm_configured
+
+    ollama = OllamaGateway()
+    vertex = VertexAIGateway()
+    vllm   = VLLMGateway()
+    nim    = NIMGateway()
+    cb     = get_circuit_breaker_state()
+
+    vllm_model = vllm._model or "meta-llama/Llama-3.1-8B-Instruct"
+
+    return {
+        "active_provider": get_provider(),
+        "providers": {
+            "ollama": {
+                "configured":    ollama.enabled,
+                "model":         ollama._model,
+                "circuit_breaker": cb["ollama"]["state"],
+                "runtime":       "local · CPU/GPU",
+            },
+            "vertex": {
+                "configured":    vertex.enabled,
+                "project":       vertex._project,
+                "location":      vertex._location,
+                "circuit_breaker": cb["vertex"]["state"],
+                "runtime":       "Google Cloud · Gemini",
+            },
+            "vllm": {
+                "configured":          is_vllm_configured(),
+                "base_url":            vllm._base_url or "http://localhost:8000",
+                "model":               vllm_model,
+                "tensor_parallel_size": vllm._tensor_parallel_size,
+                "circuit_breaker":     cb["vllm"]["state"],
+                "runtime":             "local GPU · PagedAttention",
+                "server_metrics":      vllm.prefix_cache_stats() if is_vllm_configured() else {"available": False},
+            },
+            "nim": {
+                "configured":    nim.enabled,
+                "base_url":      nim._base_url,
+                "circuit_breaker": cb["nim"]["state"],
+                "runtime":       "NVIDIA Cloud · Llama 3.1",
+            },
+        },
+        "tier_routing": {
+            "lite": {
+                "description": "Simple tasks — fast, low cost",
+                "ollama":  ollama._model or "—",
+                "vertex":  VERTEX_MODELS[ModelTier.LITE],
+                "vllm":    vllm_model,
+                "nim":     NIM_MODELS[ModelTier.LITE],
+            },
+            "flash": {
+                "description": "Standard KYC analysis",
+                "ollama":  ollama._model or "—",
+                "vertex":  VERTEX_MODELS[ModelTier.FLASH],
+                "vllm":    vllm_model,
+                "nim":     NIM_MODELS[ModelTier.FLASH],
+            },
+            "pro": {
+                "description": "Complex risk narratives, EDD",
+                "ollama":  ollama._model or "—",
+                "vertex":  VERTEX_MODELS[ModelTier.PRO],
+                "vllm":    vllm_model,
+                "nim":     NIM_MODELS[ModelTier.PRO],
+            },
+        },
+        "prefix_cache": {
+            "tracker": get_prefix_cache_stats(),
+            "note": (
+                "Hit rate per KYC task — populated when vLLM runs with --enable-prefix-caching. "
+                "Shared system prompts across agent invocations are reused from GPU KV cache."
+            ),
+        },
+    }
+
+
 @router.post("/route")
 def llm_route(
     body: LLMRouteRequest,

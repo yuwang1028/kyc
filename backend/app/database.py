@@ -16,15 +16,33 @@ def _build_engine():
     is_postgres = url.get_backend_name() in {"postgresql", "postgres"}
 
     connect_args: dict = {}
+    if is_sqlite:
+        # Allow background threads (workflow runner) to share connections.
+        # WAL mode is set via event hook below.
+        connect_args["check_same_thread"] = False
+
     if is_postgres and "supabase" in (url.host or "") and "sslmode" not in url.query:
         connect_args["sslmode"] = "require"
 
-    return create_engine(
+    engine = create_engine(
         settings.database_url,
         echo=False,
         pool_pre_ping=not is_sqlite,
         connect_args=connect_args,
     )
+
+    if is_sqlite:
+        # WAL mode: concurrent reads + single writer, eliminates "database is locked"
+        # when background tasks write while HTTP handlers read.
+        from sqlalchemy import event
+
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(conn, _rec):
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=5000")  # 5s retry on lock instead of instant fail
+
+    return engine
 
 
 engine = _build_engine()

@@ -17,7 +17,7 @@ import logging
 import os
 from typing import Any
 
-from app.services.llm_gateway import get_llm_gateway
+from app.services.llm_gateway import get_llm_gateway, llm_cache_get, llm_cache_set
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,29 @@ def enrich_with_llm(
     )
 
     try:
+        # ── Cache check ──────────────────────────────────────────────────────
+        provider_name = gw.__class__.__name__.replace("Gateway", "").lower()
+        model_hint = getattr(gw, "_model", "") or getattr(gw, "model_id", "") or ""
+        cache_prompt = system_instruction + "\n---\n" + user_prompt
+        cached = llm_cache_get(provider_name, str(model_hint), cache_prompt)
+        if cached is not None:
+            try:
+                parsed = json.loads(cached)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                out = {**baseline, **parsed}
+                for key in preserve_keys:
+                    if key in baseline:
+                        out[key] = baseline[key]
+                out["llm_used"] = True
+                out["source"] = "llm+rules+cache"
+                out["llm_task"] = task_kind
+                out["llm_tokens_in"] = 0
+                out["llm_tokens_out"] = 0
+                out["llm_latency_ms"] = 0
+                return out
+        # ── Live LLM call ────────────────────────────────────────────────────
         parsed, raw = gw.generate_json(
             task_kind=task_kind,
             system_instruction=system_instruction,
@@ -98,6 +121,17 @@ def enrich_with_llm(
         )
         if not isinstance(parsed, dict):
             raise ValueError("llm_response_not_object")
+
+        # Write to cache
+        llm_cache_set(
+            provider=provider_name,
+            model=raw.model_id,
+            agent_name=task_kind,
+            prompt=cache_prompt,
+            response=json.dumps(parsed, ensure_ascii=False),
+            prompt_tokens=raw.tokens_in,
+            completion_tokens=raw.tokens_out,
+        )
 
         out = {**baseline, **parsed}
         for key in preserve_keys:

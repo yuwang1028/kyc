@@ -117,6 +117,39 @@ export type DashboardStats = {
   high_risk: number;
 };
 
+export type LLMInfraProvider = {
+  configured: boolean;
+  circuit_breaker: "closed" | "open" | "half-open";
+  runtime: string;
+  model?: string;
+  project?: string;
+  location?: string;
+  base_url?: string;
+  tensor_parallel_size?: number;
+  server_metrics?: { available: boolean; gpu_prefix_cache_hit_rate?: number | null };
+};
+
+export type LLMInfraStatus = {
+  active_provider: string;
+  providers: Record<string, LLMInfraProvider>;
+  tier_routing: Record<string, { description: string; ollama: string; vertex: string; vllm: string; nim: string }>;
+  prefix_cache: {
+    tracker: Record<string, { calls: number; cached_tokens: number; total_prompt_tokens: number; hit_rate: number }>;
+    note: string;
+  };
+};
+
+export type LLMProviderSettings = {
+  active: "ollama" | "vertex" | "vllm" | "nim";
+  vertex_configured: boolean;
+  vllm_configured: boolean;
+  nim_configured: boolean;
+  ollama: { configured: boolean; model: string };
+  vertex: { configured: boolean; project: string; location: string; models: Record<string, string> };
+  vllm: { configured: boolean; base_url: string; model: string; tensor_parallel_size: number; prefix_cache_stats: Record<string, unknown> };
+  nim: { configured: boolean; base_url: string; models: Record<string, string> };
+};
+
 export type WorkflowRunStatus = {
   run_id: string;
   case_id: string;
@@ -202,6 +235,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getLLMProvider: () =>
+    request<LLMProviderSettings>("/settings/llm-provider"),
+
+  setLLMProvider: (provider: "ollama" | "vertex" | "vllm" | "nim") =>
+    request<{ active: string; status: string }>("/settings/llm-provider", {
+      method: "POST",
+      body: JSON.stringify({ provider }),
+    }),
+
+  getLLMInfra: () =>
+    request<LLMInfraStatus>("/llm/infra"),
 
   addParty: (
     caseId: string,

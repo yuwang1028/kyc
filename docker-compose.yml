@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8080"
+    environment:
+      USE_LOCAL_SQLITE: "true"
+      STORAGE_MODE: "local"
+      CORS_ORIGINS: "http://localhost:5174,http://localhost:8080"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OLLAMA_MODEL: "qwen2.5:7b"
+      VERTEX_PROJECT_ID: "${VERTEX_PROJECT_ID:-just-site-493900-d9}"
+      VERTEX_LOCATION: "${VERTEX_LOCATION:-us-central1}"
+    volumes:
+      - ./backend/kyc.db:/app/kyc.db
+      - ./backend/uploads:/app/uploads
+      # Mount gcloud ADC for local Vertex AI auth
+      - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./kyc-frontend
+    ports:
+      - "5174:8080"
+    environment:
+      BACKEND_URL: "http://backend:8080"
+    depends_on:
+      - backend

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel as PydanticBaseModel
 from sqlmodel import Session, select
 
 from app.config import settings
@@ -57,7 +58,7 @@ from app.services.llm_gateway import get_llm_gateway
 from app.services.risk_engine import evaluate_risk
 from app.services.agent_llm import model_name_from_output
 from app.services.document_ocr import process_pdf_file
-from app.services.document_storage import resolve_upload_path, save_case_pdf
+from app.services.document_storage import resolve_public_url, resolve_upload_bytes, resolve_upload_path, save_case_pdf
 from app.services.serialize import dump_model, json_safe
 from app.services.workflow import schedule_review_cycle
 from app.services.workflow_runner import execute_workflow_task, get_or_create_workflow_run
@@ -691,13 +692,22 @@ def download_document_file(
     doc = session.get(Document, document_id)
     if not doc or doc.case_id != case_id:
         raise HTTPException(status_code=404, detail="Document not found")
-    path = resolve_upload_path(doc.file_url or "")
-    if not path:
+
+    # GCS: redirect to signed URL
+    signed_url = resolve_public_url(doc.file_url or "")
+    if signed_url:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(signed_url)
+
+    # Local: stream bytes
+    data = resolve_upload_bytes(doc.file_url or "")
+    if not data:
         raise HTTPException(status_code=404, detail="File not available on server")
-    return FileResponse(
-        path,
+    from fastapi.responses import Response
+    return Response(
+        content=data,
         media_type=doc.mime_type or "application/pdf",
-        filename=doc.file_name,
+        headers={"Content-Disposition": f'inline; filename="{doc.file_name}"'},
     )
 
 
@@ -1288,3 +1298,77 @@ def run_refresh_cycle(session: Session = Depends(get_session)):
         "refresh_cases_created": refresh_cases,
         "due_cycles_processed": len(due_cycles),
     }
+
+
+# ----- LLM Provider settings -------------------------------------------------
+
+from app.services.llm_provider import (
+    get_provider, is_vertex_configured, is_vllm_configured, is_nim_configured,
+    set_provider, provider_summary, VALID_PROVIDERS,
+)
+from app.services.llm_gateway import (
+    OllamaGateway, VertexAIGateway, VLLMGateway, NIMGateway,
+    get_llm_gateway, get_prefix_cache_stats,
+)
+
+
+@router.get("/settings/llm-provider")
+def get_llm_provider_settings():
+    """Return current LLM provider config and availability for all backends."""
+    ollama_gw = OllamaGateway()
+    vertex_gw = VertexAIGateway()
+    vllm_gw   = VLLMGateway()
+    nim_gw    = NIMGateway()
+    return {
+        **provider_summary(),
+        "ollama": {"configured": ollama_gw.enabled, "model": ollama_gw._model},
+        "vertex": {
+            "configured": is_vertex_configured(),
+            "project":    vertex_gw._project,
+            "location":   vertex_gw._location,
+            "models":     {"lite": "gemini-2.5-flash-lite", "flash": "gemini-2.5-flash", "pro": "gemini-2.5-pro"},
+        },
+        "vllm": {
+            "configured":           is_vllm_configured(),
+            "base_url":             vllm_gw._base_url,
+            "model":                vllm_gw._model,
+            "tensor_parallel_size": vllm_gw._tensor_parallel_size,
+            "prefix_cache_stats":   get_prefix_cache_stats(),
+        },
+        "nim": {
+            "configured": is_nim_configured(),
+            "base_url":   nim_gw._base_url,
+            "models":     {"lite": "llama-3.1-8b", "flash": "llama-3.1-70b", "pro": "llama-3.1-405b"},
+        },
+    }
+
+
+class LLMProviderUpdate(PydanticBaseModel):
+    provider: str  # "ollama" | "vertex" | "vllm" | "nim"
+
+
+@router.post("/settings/llm-provider")
+def update_llm_provider(payload: LLMProviderUpdate):
+    """Switch active LLM provider at runtime. Persisted across restarts."""
+    if payload.provider not in VALID_PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"provider must be one of: {', '.join(VALID_PROVIDERS)}"
+        )
+    if payload.provider == "vertex" and not is_vertex_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Vertex AI is not configured. Set VERTEX_PROJECT_ID and VERTEX_LOCATION in .env"
+        )
+    if payload.provider == "vllm" and not is_vllm_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="vLLM is not configured. Set VLLM_BASE_URL and VLLM_MODEL in .env"
+        )
+    if payload.provider == "nim" and not is_nim_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="NVIDIA NIM is not configured. Set NIM_API_KEY in .env"
+        )
+    set_provider(payload.provider)
+    return {"active": payload.provider, "status": "ok"}

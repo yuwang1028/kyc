@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.config import settings
 from app.services.llm_gateway import get_llm_gateway
 from app.services.llm_tasks import TASK_TO_TIER, tier_for_task
 
@@ -95,7 +94,7 @@ def route_description(
         return out
 
     gw = get_llm_gateway()
-    if not gw.enabled or not settings.vertex_model_lite:
+    if not gw.enabled:
         return _route_with_rules(desc)
 
     allowed = routable_task_kinds()

@@ -1,0 +1,75 @@
+steps:
+  # ── Build backend image ───────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/backend:${BUILD_ID}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/backend:latest"
+      - ./backend
+    id: build-backend
+
+  # ── Build frontend image ──────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/frontend:${BUILD_ID}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/frontend:latest"
+      - ./kyc-frontend
+    id: build-frontend
+
+  # ── Push both images ──────────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    args: [push, --all-tags, "${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/backend"]
+    waitFor: [build-backend]
+    id: push-backend
+
+  - name: "gcr.io/cloud-builders/docker"
+    args: [push, --all-tags, "${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/frontend"]
+    waitFor: [build-frontend]
+    id: push-frontend
+
+  # ── Deploy backend ────────────────────────────────────────────────────────
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - kyc-backend
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/backend:${BUILD_ID}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --add-cloudsql-instances=${_CLOUD_SQL_CONNECTION_NAME}
+      - --set-env-vars=USE_LOCAL_SQLITE=false,STORAGE_MODE=gcs,VERTEX_PROJECT_ID=just-site-493900-d9,VERTEX_LOCATION=us-central1,LLM_CACHE_TTL_HOURS=24,CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DB_USER=kyc,DB_NAME=kyc
+      - --set-secrets=DB_PASSWORD=kyc-db-password:latest,GCS_BUCKET_NAME=kyc-gcs-bucket:latest
+      - --service-account=kyc-backend@${PROJECT_ID}.iam.gserviceaccount.com
+    waitFor: [push-backend]
+    id: deploy-backend
+
+  # ── Get backend URL, then deploy frontend ─────────────────────────────────
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        BACKEND_URL=$$(gcloud run services describe kyc-backend \
+          --region=${_REGION} --format='value(status.url)')
+        echo "Backend URL: $$BACKEND_URL"
+        gcloud run deploy kyc-frontend \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/kyc/frontend:${BUILD_ID} \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
+          --set-env-vars="BACKEND_URL=$$BACKEND_URL"
+    waitFor: [push-frontend, deploy-backend]
+
+substitutions:
+  _REGION: us-central1
+  _CLOUD_SQL_CONNECTION_NAME: "just-site-493900-d9:us-central1:kyc-db"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
