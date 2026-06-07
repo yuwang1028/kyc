@@ -712,49 +712,81 @@ def download_document_file(
     )
 
 
-@router.get("/sample-document")
-def get_sample_document(
-    doc_type: str = "certificate_of_incorporation",
+@router.post("/cases/{case_id}/load-samples", status_code=201)
+async def load_sample_documents(
+    case_id: UUID,
     jurisdiction: str = "US",
+    session: Session = Depends(get_session),
 ):
-    """Return a pre-uploaded sample PDF from GCS (or local uploads fallback)."""
-    from fastapi.responses import Response
+    """Upload all sample documents for the given jurisdiction into a case."""
+    case = session.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
 
     jur = jurisdiction.lower()
-    blob_path = f"samples/{jur}/{doc_type}.pdf"
-    filename = f"sample_{jur}_{doc_type}.pdf"
+
+    # doc_type derived from filename stem (e.g. "certificate_of_incorporation")
+    def _doc_type(stem: str) -> str:
+        return stem  # already clean names in sample_data/
+
+    created = []
 
     if settings.storage_mode == "gcs":
-        try:
-            from google.cloud import storage as gcs
-            client = gcs.Client()
-            bucket = client.bucket(settings.gcs_bucket_name)
-            blob = bucket.blob(blob_path)
-            if not blob.exists():
-                raise HTTPException(status_code=404, detail=f"Sample not found: {blob_path}")
+        from google.cloud import storage as gcs_lib
+        gcs_client = gcs_lib.Client()
+        bucket = gcs_client.bucket(settings.gcs_bucket_name)
+        prefix = f"samples/{jur}/"
+        blobs = list(bucket.list_blobs(prefix=prefix))
+        if not blobs:
+            raise HTTPException(status_code=404, detail=f"No samples found for jurisdiction '{jur}' in GCS")
+        for blob in blobs:
+            stem = Path(blob.name).stem
+            doc_type = _doc_type(stem)
+            file_name = f"sample_{stem}.pdf"
             data = blob.download_as_bytes()
-            return Response(
-                content=data,
-                media_type="application/pdf",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            from app.services.document_storage import get_storage
+            storage = get_storage()
+            file_url = storage.save(case_id, file_name, data)
+            doc = Document(
+                case_id=case_id,
+                document_type=doc_type,
+                file_name=file_name,
+                file_url=file_url,
+                mime_type="application/pdf",
+                file_size=len(data),
+                processing_status="uploaded",
             )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+            session.add(doc)
+            created.append(doc_type)
+    else:
+        sample_root = Path("sample_data") / jur
+        if not sample_root.exists():
+            raise HTTPException(status_code=404, detail=f"No local samples for jurisdiction '{jur}'")
+        for pdf_path in sorted(sample_root.glob("*.pdf")):
+            doc_type = _doc_type(pdf_path.stem)
+            file_name = f"sample_{pdf_path.stem}.pdf"
+            data = pdf_path.read_bytes()
+            from app.services.document_storage import get_storage
+            storage = get_storage()
+            file_url = storage.save(case_id, file_name, data)
+            doc = Document(
+                case_id=case_id,
+                document_type=doc_type,
+                file_name=file_name,
+                file_url=file_url,
+                mime_type="application/pdf",
+                file_size=len(data),
+                processing_status="uploaded",
+            )
+            session.add(doc)
+            created.append(doc_type)
 
-    # Local fallback: scan uploads/ for a matching filename fragment
-    uploads_root = Path("uploads")
-    for case_dir in uploads_root.iterdir() if uploads_root.exists() else []:
-        for f in case_dir.iterdir():
-            if doc_type in f.name and f.suffix == ".pdf":
-                data = f.read_bytes()
-                return Response(
-                    content=data,
-                    media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-                )
-    raise HTTPException(status_code=404, detail="Sample document not found locally")
+    log_event(session, actor_type="system", actor_id="sample_loader",
+              event_type="sample_documents_loaded",
+              event_payload={"jurisdiction": jur, "documents": created},
+              case_id=case_id)
+    session.commit()
+    return {"loaded": created}
 
 
 # ----- Screening -------------------------------------------------------------

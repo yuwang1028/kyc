@@ -333,6 +333,7 @@ const DOCUMENT_TYPES = [
 function Documents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () => void }) {
   const [docType, setDocType] = React.useState(DOCUMENT_TYPES[0].value);
   const [uploading, setUploading] = React.useState(false);
+  const [loadingSamples, setLoadingSamples] = React.useState(false);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -350,21 +351,23 @@ function Documents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: ()
     }
   }
 
-  async function loadSampleDocument() {
-    setUploading(true);
+  async function loadAllSamples() {
+    setLoadingSamples(true);
     setUploadError(null);
     try {
-      const jur = (detail.case.jurisdiction ?? "US").toLowerCase();
-      const res = await fetch(`/api/v1/sample-document?doc_type=${docType}&jurisdiction=${jur}`);
-      if (!res.ok) throw new Error("Failed to fetch sample document");
-      const blob = await res.blob();
-      const file = new File([blob], `sample_${docType}.pdf`, { type: "application/pdf" });
-      await api.uploadDocument(detail.case.id, docType, file);
+      const jur = detail.case.jurisdiction ?? "US";
+      const res = await fetch(`/api/v1/cases/${detail.case.id}/load-samples?jurisdiction=${jur}`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? "Failed to load samples");
+      }
       onRefresh();
     } catch (e) {
       setUploadError((e as Error).message);
     } finally {
-      setUploading(false);
+      setLoadingSamples(false);
     }
   }
 
@@ -385,7 +388,12 @@ function Documents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: ()
       <Panel
         eyebrow="Upload"
         title="Add document"
-        action={<Upload size={14} className="text-surface-deep" />}
+        action={
+          <PillButton variant="mint" size="sm" disabled={loadingSamples} onClick={loadAllSamples}>
+            <FlaskConical size={13} />
+            {loadingSamples ? "Loading…" : `Load all ${detail.case.jurisdiction ?? "US"} samples`}
+          </PillButton>
+        }
       >
         <div className="flex items-end gap-3 mb-4">
           <label className="block flex-1">
@@ -407,14 +415,6 @@ function Documents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: ()
             onClick={() => inputRef.current?.click()}
           >
             <Upload size={13} /> {uploading ? "Uploading…" : "Choose file"}
-          </PillButton>
-          <PillButton
-            variant="mint"
-            size="sm"
-            disabled={uploading}
-            onClick={loadSampleDocument}
-          >
-            <FlaskConical size={13} /> Load sample
           </PillButton>
           <input
             ref={inputRef}
