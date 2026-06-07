@@ -718,20 +718,55 @@ async def load_sample_documents(
     jurisdiction: str = "US",
     session: Session = Depends(get_session),
 ):
-    """Upload all sample documents for the given jurisdiction into a case."""
+    """Upload all sample documents for the given jurisdiction and run OCR on each."""
+    import tempfile
+    from app.services.document_storage import save_case_pdf
+
     case = session.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
     jur = jurisdiction.lower()
-
-    # doc_type derived from filename stem (e.g. "certificate_of_incorporation")
-    def _doc_type(stem: str) -> str:
-        return stem  # already clean names in sample_data/
-
     created = []
 
-    from app.services.document_storage import save_case_pdf
+    def _process_one(stem: str, data: bytes) -> None:
+        doc_type = stem
+        file_name = f"sample_{stem}.pdf"
+        file_url, _ = save_case_pdf(case_id, file_name, data)
+
+        # Run OCR via a temp file (works for both local and GCS modes)
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(data)
+                tmp_path = Path(tmp.name)
+            extracted = process_pdf_file(
+                abs_path=tmp_path,
+                document_type=doc_type,
+                file_name=file_name,
+            )
+            processing_status = "parsed"
+        except Exception as exc:
+            extracted = json_safe({"error": str(exc), "document_type": doc_type})
+            processing_status = "failed"
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        doc = Document(
+            case_id=case_id,
+            organization_id=case.organization_id,
+            document_type=doc_type,
+            file_name=file_name,
+            file_url=file_url,
+            mime_type="application/pdf",
+            file_size=len(data),
+            processing_status=processing_status,
+            extracted_fields=json_safe(extracted),
+        )
+        session.add(doc)
+        created.append(doc_type)
 
     if settings.storage_mode == "gcs":
         from google.cloud import storage as gcs_lib
@@ -742,42 +777,13 @@ async def load_sample_documents(
         if not blobs:
             raise HTTPException(status_code=404, detail=f"No samples found for jurisdiction '{jur}' in GCS")
         for blob in blobs:
-            stem = Path(blob.name).stem
-            doc_type = _doc_type(stem)
-            file_name = f"sample_{stem}.pdf"
-            data = blob.download_as_bytes()
-            file_url, _ = save_case_pdf(case_id, file_name, data)
-            doc = Document(
-                case_id=case_id,
-                document_type=doc_type,
-                file_name=file_name,
-                file_url=file_url,
-                mime_type="application/pdf",
-                file_size=len(data),
-                processing_status="uploaded",
-            )
-            session.add(doc)
-            created.append(doc_type)
+            _process_one(Path(blob.name).stem, blob.download_as_bytes())
     else:
         sample_root = Path("sample_data") / jur
         if not sample_root.exists():
             raise HTTPException(status_code=404, detail=f"No local samples for jurisdiction '{jur}'")
         for pdf_path in sorted(sample_root.glob("*.pdf")):
-            doc_type = _doc_type(pdf_path.stem)
-            file_name = f"sample_{pdf_path.stem}.pdf"
-            data = pdf_path.read_bytes()
-            file_url, _ = save_case_pdf(case_id, file_name, data)
-            doc = Document(
-                case_id=case_id,
-                document_type=doc_type,
-                file_name=file_name,
-                file_url=file_url,
-                mime_type="application/pdf",
-                file_size=len(data),
-                processing_status="uploaded",
-            )
-            session.add(doc)
-            created.append(doc_type)
+            _process_one(pdf_path.stem, pdf_path.read_bytes())
 
     log_event(session, actor_type="system", actor_id="sample_loader",
               event_type="sample_documents_loaded",
