@@ -354,7 +354,8 @@ function Documents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: ()
     setUploading(true);
     setUploadError(null);
     try {
-      const res = await fetch(`/api/sample-document?doc_type=${docType}`);
+      const jur = (detail.case.jurisdiction ?? "US").toLowerCase();
+      const res = await fetch(`/api/sample-document?doc_type=${docType}&jurisdiction=${jur}`);
       if (!res.ok) throw new Error("Failed to fetch sample document");
       const blob = await res.blob();
       const file = new File([blob], `sample_${docType}.pdf`, { type: "application/pdf" });
