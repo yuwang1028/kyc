@@ -49,7 +49,7 @@ engine = _build_engine()
 
 
 def init_db() -> None:
-    SQLModel.metadata.create_all(engine)
+    SQLModel.metadata.create_all(engine, checkfirst=True)
     backend = make_url(settings.database_url).get_backend_name()
     logger.info("Database ready backend=%s", backend)
 

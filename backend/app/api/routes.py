@@ -731,6 +731,8 @@ async def load_sample_documents(
 
     created = []
 
+    from app.services.document_storage import save_case_pdf
+
     if settings.storage_mode == "gcs":
         from google.cloud import storage as gcs_lib
         gcs_client = gcs_lib.Client()
@@ -744,9 +746,7 @@ async def load_sample_documents(
             doc_type = _doc_type(stem)
             file_name = f"sample_{stem}.pdf"
             data = blob.download_as_bytes()
-            from app.services.document_storage import get_storage
-            storage = get_storage()
-            file_url = storage.save(case_id, file_name, data)
+            file_url, _ = save_case_pdf(case_id, file_name, data)
             doc = Document(
                 case_id=case_id,
                 document_type=doc_type,
@@ -766,9 +766,7 @@ async def load_sample_documents(
             doc_type = _doc_type(pdf_path.stem)
             file_name = f"sample_{pdf_path.stem}.pdf"
             data = pdf_path.read_bytes()
-            from app.services.document_storage import get_storage
-            storage = get_storage()
-            file_url = storage.save(case_id, file_name, data)
+            file_url, _ = save_case_pdf(case_id, file_name, data)
             doc = Document(
                 case_id=case_id,
                 document_type=doc_type,
