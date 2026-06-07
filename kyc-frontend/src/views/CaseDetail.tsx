@@ -1313,8 +1313,8 @@ function SummaryAgentPanel({ caseId, detail, onRefresh }: { caseId: string; deta
 
   const execSummary    = typeof result?.["executive_summary"] === "string" ? result!["executive_summary"] as string : "";
   const recommendation = typeof result?.["recommendation"]    === "string" ? result!["recommendation"]    as string : "";
-  const openIssues     = Array.isArray(result?.["open_issues"])     ? result!["open_issues"]     as string[] : [];
-  const checklist      = Array.isArray(result?.["reviewer_checklist"]) ? result!["reviewer_checklist"] as string[] : [];
+  const openIssues     = arr(result?.["open_issues"]);
+  const checklist      = arr(result?.["reviewer_checklist"]);
   const reviewerNotes  = typeof result?.["reviewer_notes"] === "string" ? result!["reviewer_notes"] as string : "";
 
   const DISP_LABEL: Record<string, string> = {
