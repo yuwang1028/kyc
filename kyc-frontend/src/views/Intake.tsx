@@ -5,7 +5,7 @@ import { PillButton } from "@/components/blocks/PillButton";
 import { AIDot } from "@/components/ai/AIDot";
 import { SpringIn } from "@/components/ai/SpringIn";
 import { api } from "@/lib/api";
-import { Sparkles, Building2, Globe2, FileCheck } from "lucide-react";
+import { Sparkles, Building2, Globe2, FileCheck, FlaskConical } from "lucide-react";
 
 export function Intake() {
   const { go } = useApp();
@@ -23,6 +23,18 @@ export function Intake() {
 
   function set<K extends keyof typeof form>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  function loadSample() {
+    setForm({
+      legal_name: "Acme Global Holdings LLC",
+      registration_number: "REG-2024-88321",
+      incorporation_country: "US",
+      website: "https://acmeglobal.example.com",
+      description: "Acme Global Holdings is a mid-market holding company with subsidiaries in fintech, logistics, and real estate across North America and Southeast Asia.",
+      jurisdiction: "US",
+      priority: "normal",
+    });
   }
 
   async function submit() {
@@ -66,9 +78,14 @@ export function Intake() {
               </div>
             </div>
           </div>
-          <PillButton variant="mint" size="sm" onClick={() => go({ kind: "dashboard" })}>
-            Cancel
-          </PillButton>
+          <div className="flex gap-2">
+            <PillButton variant="mint" size="sm" onClick={loadSample}>
+              <FlaskConical size={13} /> Load sample
+            </PillButton>
+            <PillButton variant="mint" size="sm" onClick={() => go({ kind: "dashboard" })}>
+              Cancel
+            </PillButton>
+          </div>
         </section>
       </SpringIn>
 

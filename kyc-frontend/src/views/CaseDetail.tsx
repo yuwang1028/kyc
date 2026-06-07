@@ -23,6 +23,7 @@ import {
   Trash2,
   Users,
   Plus,
+  FlaskConical,
 } from "lucide-react";
 
 type TabId = "overview" | "documents" | "ownership" | "screening" | "risk" | "agents" | "decision" | "audit";
@@ -349,6 +350,23 @@ function Documents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: ()
     }
   }
 
+  async function loadSampleDocument() {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const res = await fetch(`/api/sample-document?doc_type=${docType}`);
+      if (!res.ok) throw new Error("Failed to fetch sample document");
+      const blob = await res.blob();
+      const file = new File([blob], `sample_${docType}.pdf`, { type: "application/pdf" });
+      await api.uploadDocument(detail.case.id, docType, file);
+      onRefresh();
+    } catch (e) {
+      setUploadError((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
@@ -388,6 +406,14 @@ function Documents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: ()
             onClick={() => inputRef.current?.click()}
           >
             <Upload size={13} /> {uploading ? "Uploading…" : "Choose file"}
+          </PillButton>
+          <PillButton
+            variant="mint"
+            size="sm"
+            disabled={uploading}
+            onClick={loadSampleDocument}
+          >
+            <FlaskConical size={13} /> Load sample
           </PillButton>
           <input
             ref={inputRef}

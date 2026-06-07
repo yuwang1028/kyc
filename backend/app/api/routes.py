@@ -711,6 +711,79 @@ def download_document_file(
     )
 
 
+@router.get("/sample-document")
+def get_sample_document(doc_type: str = "certificate_of_incorporation"):
+    """Return a minimal sample PDF for demo / load-sample purposes."""
+    label_map = {
+        "certificate_of_incorporation": "Certificate of Incorporation",
+        "ownership_chart": "Ownership Chart",
+        "ubo_declaration": "UBO Declaration",
+        "proof_of_address": "Proof of Address",
+        "audited_financials": "Audited Financials (2023)",
+        "business_license": "Business License",
+        "other": "Supporting Document",
+    }
+    label = label_map.get(doc_type, doc_type.replace("_", " ").title())
+    content_lines = [
+        f"SAMPLE DOCUMENT — {label}",
+        "",
+        "Company: Acme Global Holdings LLC",
+        "Registration: REG-2024-88321",
+        "Jurisdiction: United States",
+        "Date: 2024-01-15",
+        "",
+        "This is a sample document generated for demonstration purposes.",
+        "In a real KYC case, upload the actual signed document here.",
+    ]
+    # Build a minimal valid PDF
+    body_text = "\n".join(content_lines)
+    lines = []
+    y = 750
+    pdf_streams = []
+    for line in content_lines:
+        safe = line.replace("(", "\\(").replace(")", "\\)")
+        pdf_streams.append(f"BT /F1 11 Tf 50 {y} Td ({safe}) Tj ET")
+        y -= 18
+
+    stream_content = "\n".join(pdf_streams)
+    stream_bytes = stream_content.encode()
+
+    objects: list[bytes] = []
+    offsets: list[int] = []
+
+    def add_obj(content: str) -> int:
+        idx = len(objects) + 1
+        objects.append(content.encode())
+        return idx
+
+    add_obj("<</Type/Catalog/Pages 2 0 R>>")
+    add_obj("<</Type/Pages/Kids[3 0 R]/Count 1>>")
+    add_obj("<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>")
+    add_obj(f"<</Length {len(stream_bytes)}>>\nstream\n{stream_content}\nendstream")
+    add_obj("<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>")
+
+    pdf = b"%PDF-1.4\n"
+    for i, obj_content in enumerate(objects):
+        offsets.append(len(pdf))
+        pdf += f"{i+1} 0 obj\n".encode() + obj_content + b"\nendobj\n"
+
+    xref_offset = len(pdf)
+    pdf += b"xref\n"
+    pdf += f"0 {len(objects)+1}\n".encode()
+    pdf += b"0000000000 65535 f \n"
+    for off in offsets:
+        pdf += f"{off:010d} 00000 n \n".encode()
+    pdf += f"trailer<</Size {len(objects)+1}/Root 1 0 R>>\nstartxref\n{xref_offset}\n%%EOF\n".encode()
+
+    from fastapi.responses import Response
+    filename = f"sample_{doc_type}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # ----- Screening -------------------------------------------------------------
 
 
