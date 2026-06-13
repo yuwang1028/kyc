@@ -172,9 +172,14 @@ export type WorkflowRunStatus = {
   } | null;
 };
 
+export type ApiCaseWithOrg = ApiCase & { organization: ApiOrganization | null };
+
 export const api = {
   listCases: (status?: string) =>
     request<ApiCase[]>(`/cases${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+
+  listCasesWithOrg: (limit = 50) =>
+    request<ApiCaseWithOrg[]>(`/cases?include_organization=true&limit=${limit}`),
 
   getDashboardStats: () => request<DashboardStats>("/dashboard/stats"),
 

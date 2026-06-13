@@ -155,12 +155,26 @@ def _risk_output_for_summary(session: Session, case_id: UUID) -> dict:
 def list_cases(
     status: Optional[str] = None,
     limit: int = 50,
+    include_organization: bool = False,
     session: Session = Depends(get_session),
 ):
     stmt = select(Case).order_by(Case.created_at.desc()).limit(limit)
     if status:
         stmt = stmt.where(Case.status == status)
-    return session.exec(stmt).all()
+    cases = session.exec(stmt).all()
+    if not include_organization:
+        return cases
+
+    org_ids = {c.organization_id for c in cases if c.organization_id}
+    orgs = {}
+    if org_ids:
+        org_rows = session.exec(select(Organization).where(Organization.id.in_(org_ids))).all()
+        orgs = {o.id: o for o in org_rows}
+
+    return [
+        {**dump_model(c), "organization": dump_model(orgs[c.organization_id]) if c.organization_id in orgs else None}
+        for c in cases
+    ]
 
 
 @router.post("/cases", status_code=201)

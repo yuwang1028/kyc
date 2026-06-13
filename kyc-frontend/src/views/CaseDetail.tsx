@@ -283,17 +283,24 @@ function DocumentRow({
     }
   }
 
+  const fileUrl = `/api/v1/cases/${caseId}/documents/${doc.id}/file`;
+
   return (
     <div className="py-3 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-md bg-surface-fog flex items-center justify-center shrink-0">
-          <FileText size={14} className="text-mute" />
+      <a
+        href={fileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-3 min-w-0 flex-1 hover:bg-surface-mint/40 -mx-2 px-2 py-1 rounded-md transition-colors group"
+      >
+        <div className="w-8 h-8 rounded-md bg-surface-fog flex items-center justify-center shrink-0 group-hover:bg-surface-deep group-hover:text-ink-inverse transition-colors">
+          <FileText size={14} className="text-mute group-hover:text-ink-inverse" />
         </div>
         <div className="min-w-0">
-          <div className="text-[14px] font-medium truncate">{doc.file_name}</div>
-          <div className="text-[12px] text-mute">{doc.document_type}</div>
+          <div className="text-[14px] font-medium truncate group-hover:text-surface-deep group-hover:underline">{doc.file_name}</div>
+          <div className="text-[12px] text-mute">{doc.document_type} · click to preview</div>
         </div>
-      </div>
+      </a>
       <div className="flex items-center gap-2 shrink-0">
         <StatusPill
           label={doc.processing_status ?? "pending"}
