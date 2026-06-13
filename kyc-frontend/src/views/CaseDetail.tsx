@@ -969,28 +969,33 @@ function ModelSelector({
 
 function InfraPanel({ infra }: { infra: LLMInfraStatus | null }) {
   if (!infra) return null;
-  const CB_COLOR: Record<string, string> = {
-    closed: "#22c55e", open: "#ef4444", "half-open": "#f59e0b",
-  };
+
+  function providerStatus(p: { configured: boolean; circuit_breaker: string }) {
+    if (!p.configured)                    return { label: "closed", color: "#ef4444" };
+    if (p.circuit_breaker === "open")     return { label: "error",  color: "#ef4444" };
+    if (p.circuit_breaker === "half-open") return { label: "degraded", color: "#f59e0b" };
+    return { label: "active", color: "#22c55e" };
+  }
+
   return (
     <Panel eyebrow="AI Infrastructure" title="NVIDIA / Provider status" action={<Activity size={14} className="text-surface-deep" />}>
       <div className="space-y-3 text-[13px]">
         <div className="flex gap-2 flex-wrap">
-          {Object.entries(infra.providers).map(([name, p]) => (
-            <div key={name} className="border border-divider rounded-md px-3 py-2 bg-surface-fog min-w-[140px]">
-              <div className="font-bold capitalize mb-1">{name}</div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="inline-block w-2 h-2 rounded-full"
-                  style={{ background: CB_COLOR[p.circuit_breaker] ?? "#64748b" }}
-                />
-                <span className="text-mute text-[11px]">{p.circuit_breaker}</span>
+          {Object.entries(infra.providers).map(([name, p]) => {
+            const s = providerStatus(p);
+            return (
+              <div key={name} className="border border-divider rounded-md px-3 py-2 bg-surface-fog min-w-[140px]">
+                <div className="font-bold capitalize mb-1">{name}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.color }} />
+                  <span className="text-mute text-[11px]">{s.label}</span>
+                </div>
+                <div className="text-mute text-[11px] mt-0.5">{p.runtime}</div>
+                {p.model && <div className="text-mute text-[11px] truncate">{p.model}</div>}
+                {!p.configured && <div className="text-[11px] text-amber-500 mt-0.5">not configured</div>}
               </div>
-              <div className="text-mute text-[11px] mt-0.5">{p.runtime}</div>
-              {p.model && <div className="text-mute text-[11px] truncate">{p.model}</div>}
-              {!p.configured && <div className="text-[11px] text-amber-500 mt-0.5">not configured</div>}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div>
@@ -1129,7 +1134,23 @@ function Agents({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () =>
       {/* Workflow runner */}
       <Panel eyebrow="Onboarding pipeline" action={<Sparkles size={14} className="text-surface-deep" />}>
         <p className="text-[13px] text-mute mb-3">
-          Runs all 6 phases (intake → verification → screening → ownership → risk → review) using Qwen 2.5 7B agents.
+          Runs all 6 phases (intake → verification → screening → ownership → risk → review)
+          {(() => {
+            if (!infra) return " using the configured LLM agents.";
+            const active = infra.active_provider;
+            const model =
+              infra.providers?.[active]?.model
+              ?? infra.tier_routing?.flash?.[active as keyof typeof infra.tier_routing.flash]
+              ?? "";
+            const providerLabel =
+              active === "nim" ? "NVIDIA NIM" :
+              active === "vertex" ? "Vertex AI" :
+              active === "vllm" ? "vLLM" :
+              active === "ollama" ? "Ollama" : active;
+            return model
+              ? ` using ${providerLabel} · ${model}.`
+              : ` using ${providerLabel}.`;
+          })()}
         </p>
         {runError && <div className="text-[13px] text-mark-red mb-3">{runError}</div>}
         <PillButton variant="primary" size="sm" onClick={runWorkflow} disabled={busy}>
