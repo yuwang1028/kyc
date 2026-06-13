@@ -4,17 +4,17 @@ import { AIDot } from "@/components/ai/AIDot";
 import { StaggerList } from "@/components/ai/StaggerList";
 
 const tasks = [
-  { id: "T-1041", title: "Request ownership chart from Beijing Hanwei",          case: "KYC-2041", status: "Open",        kind: "warn" as const,  due: "Today, 6:00pm" },
-  { id: "T-1039", title: "Confirm OFAC sanctions match · Singapore Trade",       case: "KYC-2039", status: "Open",        kind: "alert" as const, due: "Today, 5:00pm" },
-  { id: "T-1036", title: "Verify Lumen Capital FCA registration",                 case: "KYC-2036", status: "In progress", kind: "active" as const,due: "Tomorrow" },
-  { id: "T-1034", title: "Request UBO declaration from Acme Industries",          case: "KYC-2034", status: "Open",        kind: "warn" as const,  due: "Fri 31 May" },
-  { id: "T-1029", title: "Annual periodic review · Nordic Maritime",              case: "KYC-1987", status: "Done",        kind: "ok" as const,    due: "Closed" },
+  { id: "T-1041", title: "Request ownership chart from Beijing Hanwei",          case: "KYC-2041", status: "Active",      kind: "ok"       as const, due: "Today, 6:00pm" },
+  { id: "T-1039", title: "Confirm OFAC sanctions match · Singapore Trade",       case: "KYC-2039", status: "Active",      kind: "ok"       as const, due: "Today, 5:00pm" },
+  { id: "T-1036", title: "Verify Lumen Capital FCA registration",                case: "KYC-2036", status: "In progress", kind: "warn"     as const, due: "Tomorrow" },
+  { id: "T-1034", title: "Request UBO declaration from Acme Industries",         case: "KYC-2034", status: "Active",      kind: "ok"       as const, due: "Fri 31 May" },
+  { id: "T-1029", title: "Annual periodic review · Nordic Maritime",             case: "KYC-1987", status: "Closed",      kind: "critical" as const, due: "Closed" },
 ];
 
 export function Tasks() {
   return (
     <div className="pl-5 pr-6 pt-4 pb-8 space-y-3 min-h-screen bg-[color-mix(in_srgb,var(--surface-mint)_18%,var(--surface-fog))]">
-      <TopRow breadcrumb={{ label: "Tasks", chip: `${tasks.filter(t => t.status !== "Done").length} open` }} />
+      <TopRow breadcrumb={{ label: "Tasks", chip: `${tasks.filter(t => t.status !== "Closed").length} active` }} />
 
       <section className="bg-white border border-divider rounded-md overflow-hidden">
         <header className="px-4 py-2.5 border-b border-divider flex items-center gap-3">

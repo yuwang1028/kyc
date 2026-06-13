@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { useApp, type View } from "@/state";
+import { api } from "@/lib/api";
 import {
   LayoutDashboard,
   TrendingUp,
@@ -23,38 +24,57 @@ type NavItem = {
 
 type Section = { title: string; items: NavItem[] };
 
-const sections: Section[] = [
-  {
-    title: "Overview",
-    items: [
-      { label: "Dashboard", icon: LayoutDashboard, view: { kind: "dashboard" } },
-      { label: "AI insights", icon: TrendingUp, comingSoon: true, badge: { kind: "soon" } },
-    ],
-  },
-  {
-    title: "KYC operations",
-    items: [
-      { label: "Cases", icon: Folder, view: { kind: "cases" }, badge: { kind: "count", value: 4 } },
-      { label: "New intake", icon: FilePlus, view: { kind: "intake" }, badge: { kind: "star" } },
-      { label: "Screening watch", icon: Radar, comingSoon: true, badge: { kind: "soon" } },
-    ],
-  },
-  {
-    title: "Tasks",
-    items: [
-      { label: "Tasks", icon: ClipboardList, view: { kind: "tasks" }, badge: { kind: "count", value: 4 } },
-      { label: "Audit log", icon: FileText, comingSoon: true, badge: { kind: "soon" } },
-    ],
-  },
-  {
-    title: "System",
-    items: [{ label: "Settings", icon: Settings, comingSoon: true }],
-  },
-];
+function buildSections(caseCount: number | null): Section[] {
+  const casesBadge: NavItem["badge"] =
+    caseCount === null ? undefined : { kind: "count", value: caseCount };
+  return [
+    {
+      title: "Overview",
+      items: [
+        { label: "Dashboard", icon: LayoutDashboard, view: { kind: "dashboard" } },
+        { label: "AI insights", icon: TrendingUp, comingSoon: true, badge: { kind: "soon" } },
+      ],
+    },
+    {
+      title: "KYC operations",
+      items: [
+        { label: "Cases", icon: Folder, view: { kind: "cases" }, badge: casesBadge },
+        { label: "New intake", icon: FilePlus, view: { kind: "intake" }, badge: { kind: "star" } },
+        { label: "Screening watch", icon: Radar, comingSoon: true, badge: { kind: "soon" } },
+      ],
+    },
+    {
+      title: "Tasks",
+      items: [
+        { label: "Tasks", icon: ClipboardList, view: { kind: "tasks" } },
+        { label: "Audit log", icon: FileText, comingSoon: true, badge: { kind: "soon" } },
+      ],
+    },
+    {
+      title: "System",
+      items: [{ label: "Settings", icon: Settings, comingSoon: true }],
+    },
+  ];
+}
 
 export function Sidebar() {
   const { view, go } = useApp();
   const activeKind = view.kind;
+  const [caseCount, setCaseCount] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      api.getDashboardStats()
+        .then((s) => { if (!cancelled) setCaseCount(s.total_cases); })
+        .catch(() => {});
+    };
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [view]);
+
+  const sections = buildSections(caseCount);
 
   return (
     <aside className="flex flex-col w-[240px] shrink-0 h-screen bg-white border-r border-divider sticky top-0">
