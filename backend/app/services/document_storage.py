@@ -111,10 +111,24 @@ class GCSDocumentStorage(DocumentStorage):
         if not blob_name:
             return None
         blob = self._bucket.blob(blob_name)
+
+        # On Cloud Run the default credentials only carry an access token, not a
+        # private key, so generate_signed_url() needs to delegate signing to the
+        # IAM signBlob API. Refresh the token, then pass service_account_email +
+        # access_token so the SDK does an IAM-signed URL.
+        from google.auth import default as google_default
+        from google.auth.transport import requests as g_requests
+
+        credentials, _ = google_default()
+        if not credentials.valid:
+            credentials.refresh(g_requests.Request())
+
         return blob.generate_signed_url(
             expiration=datetime.timedelta(seconds=settings.gcs_signed_url_expiry),
             method="GET",
             version="v4",
+            service_account_email=getattr(credentials, "service_account_email", None),
+            access_token=getattr(credentials, "token", None),
         )
 
     def _blob_name_from_url(self, file_url: str) -> str | None:
