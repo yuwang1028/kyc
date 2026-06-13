@@ -46,11 +46,13 @@ VERTEX_MODELS: dict[ModelTier, str] = {
 # Gemini AI Studio API endpoint (used when GEMINI_API_KEY is set)
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
-# NVIDIA NIM tier mapping: lite → 8B, flash → 70B, pro → 405B
+# NVIDIA NIM tier mapping → NVIDIA Nemotron family (post-trained Llama)
+# Nemotron is NVIDIA's own SOTA reasoning model line, branding the product as
+# "powered by NVIDIA Nemotron" rather than plain Llama.
 NIM_MODELS: dict[ModelTier, str] = {
-    ModelTier.LITE:  "meta/llama-3.1-8b-instruct",
-    ModelTier.FLASH: "meta/llama-3.1-70b-instruct",
-    ModelTier.PRO:   "meta/llama-3.1-405b-instruct",
+    ModelTier.LITE:  "nvidia/llama-3.1-nemotron-nano-8b-v1",
+    ModelTier.FLASH: "nvidia/llama-3.1-nemotron-70b-instruct",
+    ModelTier.PRO:   "nvidia/llama-3.1-nemotron-ultra-253b-v1",
 }
 
 

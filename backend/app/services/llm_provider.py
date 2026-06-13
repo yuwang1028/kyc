@@ -7,6 +7,7 @@ persisted to .llm_config.json next to the backend root so the choice survives re
 from __future__ import annotations
 
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -15,18 +16,25 @@ _CONFIG_FILE = Path(__file__).resolve().parents[2] / ".llm_config.json"
 _lock = threading.Lock()
 _state: dict[str, Any] = {"provider": "ollama"}
 
+VALID_PROVIDERS = ("ollama", "vertex", "vllm", "nim")
+
 
 def _load() -> None:
     global _state
+    # 1. Read persisted file if present
     if _CONFIG_FILE.exists():
         try:
             data = json.loads(_CONFIG_FILE.read_text())
-            # migrate legacy "gemini" → "vertex"
             if data.get("provider") == "gemini":
                 data["provider"] = "vertex"
             _state = {"provider": "ollama", **data}
         except Exception:
             pass
+    # 2. Env var LLM_PROVIDER takes priority (used on Cloud Run / Docker so
+    #    the deploy can hard-set the active provider without rebuilding).
+    env_provider = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+    if env_provider in VALID_PROVIDERS:
+        _state["provider"] = env_provider
 
 
 def _save() -> None:
@@ -42,9 +50,6 @@ _load()
 def get_provider() -> str:
     with _lock:
         return str(_state.get("provider") or "ollama")
-
-
-VALID_PROVIDERS = ("ollama", "vertex", "vllm", "nim")
 
 
 def is_vertex_configured() -> bool:
