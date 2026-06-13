@@ -785,11 +785,16 @@ async def load_sample_documents(
     if settings.storage_mode == "gcs":
         from google.cloud import storage as gcs_lib
         gcs_client = gcs_lib.Client()
-        bucket = gcs_client.bucket(settings.gcs_bucket_name)
-        prefix = f"samples/{jur}/"
+        # Samples live in a dedicated read-only bucket separate from user uploads
+        samples_bucket_name = settings.gcs_samples_bucket_name or settings.gcs_bucket_name
+        bucket = gcs_client.bucket(samples_bucket_name)
+        prefix = f"{jur}/"
         blobs = list(bucket.list_blobs(prefix=prefix))
         if not blobs:
-            raise HTTPException(status_code=404, detail=f"No samples found for jurisdiction '{jur}' in GCS")
+            raise HTTPException(
+                status_code=404,
+                detail=f"No samples found for jurisdiction '{jur}' in bucket {samples_bucket_name}",
+            )
         for blob in blobs:
             _process_one(Path(blob.name).stem, blob.download_as_bytes())
     else:

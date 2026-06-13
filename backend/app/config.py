@@ -81,8 +81,12 @@ class Settings(BaseModel):
 
     # Storage backend: "local" (default dev) or "gcs" (production)
     storage_mode: str = os.getenv("STORAGE_MODE", "local")
+    # Bucket for real user uploads (lifecycle-managed, audited)
     gcs_bucket_name: str = os.getenv("GCS_BUCKET_NAME", "")
-    gcs_signed_url_expiry: int = int(os.getenv("GCS_SIGNED_URL_EXPIRY", "3600"))
+    # Separate bucket for demo sample PDFs (read-only, never archived)
+    gcs_samples_bucket_name: str = os.getenv("GCS_SAMPLES_BUCKET_NAME", "")
+    # Shorter signed URL TTL minimizes leak window (5 minutes default)
+    gcs_signed_url_expiry: int = int(os.getenv("GCS_SIGNED_URL_EXPIRY", "300"))
 
     workflow_use_llm_agents: bool = os.getenv("WORKFLOW_USE_LLM_AGENTS", "true").strip().lower() in (
         "1",

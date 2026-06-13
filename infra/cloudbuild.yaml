@@ -44,7 +44,7 @@ steps:
       - --platform=managed
       - --allow-unauthenticated
       - --add-cloudsql-instances=${_CLOUD_SQL_CONNECTION_NAME}
-      - --set-env-vars=USE_LOCAL_SQLITE=false,STORAGE_MODE=gcs,VERTEX_PROJECT_ID=just-site-493900-d9,VERTEX_LOCATION=us-central1,LLM_CACHE_TTL_HOURS=24,CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DB_USER=kyc,DB_NAME=kyc
+      - --set-env-vars=USE_LOCAL_SQLITE=false,STORAGE_MODE=gcs,VERTEX_PROJECT_ID=just-site-493900-d9,VERTEX_LOCATION=us-central1,LLM_CACHE_TTL_HOURS=24,CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DB_USER=kyc,DB_NAME=kyc,GCS_SAMPLES_BUCKET_NAME=${PROJECT_ID}-kyc-samples,GCS_SIGNED_URL_EXPIRY=300
       - --set-secrets=DB_PASSWORD=kyc-db-password:latest,GCS_BUCKET_NAME=kyc-gcs-bucket:latest
       - --service-account=kyc-backend@${PROJECT_ID}.iam.gserviceaccount.com
     waitFor: [push-backend]
