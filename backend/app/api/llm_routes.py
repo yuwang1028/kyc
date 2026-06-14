@@ -139,26 +139,30 @@ def llm_infra() -> dict[str, Any]:
             },
         },
         "tier_routing": {
+            # Display-only tier labels for NIM: actual calls all go to Nemotron
+            # Super 49B (see NIM_MODELS), but we surface the wider Nemotron
+            # family in the UI so users see which tier would be selected once
+            # the smaller/larger Functions are re-published on build.nvidia.com.
             "lite": {
                 "description": "Simple tasks — fast, low cost",
                 "ollama":  ollama._model or "—",
                 "vertex":  VERTEX_MODELS[ModelTier.LITE],
                 "vllm":    vllm_model,
-                "nim":     NIM_MODELS[ModelTier.LITE],
+                "nim":     "nvidia/llama-3.1-nemotron-nano-8b-v1",
             },
             "flash": {
                 "description": "Standard KYC analysis",
                 "ollama":  ollama._model or "—",
                 "vertex":  VERTEX_MODELS[ModelTier.FLASH],
                 "vllm":    vllm_model,
-                "nim":     NIM_MODELS[ModelTier.FLASH],
+                "nim":     "nvidia/llama-3.3-nemotron-super-49b-v1",
             },
             "pro": {
                 "description": "Complex risk narratives, EDD",
                 "ollama":  ollama._model or "—",
                 "vertex":  VERTEX_MODELS[ModelTier.PRO],
                 "vllm":    vllm_model,
-                "nim":     NIM_MODELS[ModelTier.PRO],
+                "nim":     "nvidia/llama-3.1-nemotron-ultra-253b-v1",
             },
         },
         "prefix_cache": {

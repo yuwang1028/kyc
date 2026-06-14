@@ -1409,7 +1409,6 @@ from app.services.llm_provider import (
 )
 from app.services.llm_gateway import (
     OllamaGateway, VertexAIGateway, VLLMGateway, NIMGateway,
-    NIM_MODELS,
     get_llm_gateway, get_prefix_cache_stats,
 )
 
@@ -1440,7 +1439,13 @@ def get_llm_provider_settings():
         "nim": {
             "configured": is_nim_configured(),
             "base_url":   nim_gw._base_url,
-            "models":     {t.value: m for t, m in NIM_MODELS.items()},
+            # Display-only tiers — actual calls all go to Super 49B (see
+            # NIM_MODELS) until Nano 8B / Ultra 253B Functions are re-published.
+            "models":     {
+                "lite":  "nvidia/llama-3.1-nemotron-nano-8b-v1",
+                "flash": "nvidia/llama-3.3-nemotron-super-49b-v1",
+                "pro":   "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+            },
         },
     }
 
