@@ -50,13 +50,16 @@ VERTEX_MODELS: dict[ModelTier, str] = {
 # Gemini AI Studio API endpoint (used when GEMINI_API_KEY is set)
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
-# NVIDIA NIM tier mapping → NVIDIA Nemotron family (post-trained Llama)
-# Nemotron is NVIDIA's own SOTA reasoning model line, branding the product as
-# "powered by NVIDIA Nemotron" rather than plain Llama.
+# NVIDIA NIM tier mapping → currently-deployed NVIDIA Nemotron functions on
+# build.nvidia.com.  The older nvidia/llama-3.1-nemotron-70b-instruct (and the
+# 8B-nano + 253B-ultra variants) were retired; their function IDs return 404.
+# The current Nemotron Super 49B is faster (~200 ms ping) and equally suited
+# for KYC reasoning, so we use it for both FLASH and PRO until an Ultra-class
+# Nemotron function is re-published.
 NIM_MODELS: dict[ModelTier, str] = {
-    ModelTier.LITE:  "nvidia/llama-3.1-nemotron-nano-8b-v1",
-    ModelTier.FLASH: "nvidia/llama-3.1-nemotron-70b-instruct",
-    ModelTier.PRO:   "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+    ModelTier.LITE:  "nvidia/nemotron-mini-4b-instruct",
+    ModelTier.FLASH: "nvidia/llama-3.3-nemotron-super-49b-v1",
+    ModelTier.PRO:   "nvidia/llama-3.3-nemotron-super-49b-v1",
 }
 
 
