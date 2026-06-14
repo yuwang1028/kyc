@@ -57,7 +57,11 @@ _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 # for KYC reasoning, so we use it for both FLASH and PRO until an Ultra-class
 # Nemotron function is re-published.
 NIM_MODELS: dict[ModelTier, str] = {
-    ModelTier.LITE:  "nvidia/nemotron-mini-4b-instruct",
+    # Nemotron Mini 4B only has 4K total context, which truncates the KYC
+    # intake / review prompts (system instruction + extracted document fields
+    # routinely exceeds 6K tokens). Use Super 49B for every tier — it has a
+    # 128K window and is fast enough (~200 ms ping) to be the default.
+    ModelTier.LITE:  "nvidia/llama-3.3-nemotron-super-49b-v1",
     ModelTier.FLASH: "nvidia/llama-3.3-nemotron-super-49b-v1",
     ModelTier.PRO:   "nvidia/llama-3.3-nemotron-super-49b-v1",
 }
