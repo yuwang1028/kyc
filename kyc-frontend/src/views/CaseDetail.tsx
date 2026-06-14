@@ -926,10 +926,10 @@ function ModelSelector({
   const nimOk       = providerCfg?.nim.configured     ?? false;
 
   function subtitle(p: ProviderKey): string {
-    if (p === "ollama") return ollamaModel;
+    if (p === "ollama") return `${ollamaModel} · needs: ollama pull ${ollamaModel}`;
     if (p === "vertex") return vertexOk ? "2.5-flash-lite / 2.5-flash / 2.5-pro" : "not configured";
     if (p === "vllm")   return vllmOk   ? `${providerCfg?.vllm.model ?? "llama-3.1"} · PagedAttention` : "set VLLM_BASE_URL in .env";
-    if (p === "nim")    return nimOk     ? "8B / 70B / 405B · Llama 3.1" : "not configured";
+    if (p === "nim")    return nimOk     ? "Nemotron Mini 4B / Super 49B · NVIDIA" : "not configured";
     return "not configured";
   }
 
@@ -970,10 +970,14 @@ function ModelSelector({
 function InfraPanel({ infra }: { infra: LLMInfraStatus | null }) {
   if (!infra) return null;
 
+  // Down (unconfigured or circuit tripped) reads "closed" in red; healthy reads
+  // "active" in green. We never surface the raw breaker word "open" — it reads
+  // as "available" to non-engineers, the opposite of what it means.
   function providerStatus(p: { configured: boolean; circuit_breaker: string }) {
-    if (!p.configured)                    return { label: "closed", color: "#ef4444" };
-    if (p.circuit_breaker === "open")     return { label: "error",  color: "#ef4444" };
-    if (p.circuit_breaker === "half-open") return { label: "degraded", color: "#f59e0b" };
+    if (!p.configured || p.circuit_breaker === "open")
+      return { label: "closed", color: "#ef4444" };
+    if (p.circuit_breaker === "half-open")
+      return { label: "degraded", color: "#f59e0b" };
     return { label: "active", color: "#22c55e" };
   }
 

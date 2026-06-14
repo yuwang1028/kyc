@@ -135,7 +135,7 @@ def llm_infra() -> dict[str, Any]:
                 "configured":    nim.enabled,
                 "base_url":      nim._base_url,
                 "circuit_breaker": cb["nim"]["state"],
-                "runtime":       "NVIDIA Cloud · Llama 3.1",
+                "runtime":       "NVIDIA Cloud · Nemotron",
             },
         },
         "tier_routing": {

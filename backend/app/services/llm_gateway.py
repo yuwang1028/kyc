@@ -689,13 +689,14 @@ class VLLMGateway:
             raise ValueError(f"vLLM returned invalid JSON: {e}\nRaw: {raw.text[:300]}") from e
 
 
-# ── NVIDIA NIM Gateway (cloud inference — tier-mapped Llama 3.1) ──────────────
+# ── NVIDIA NIM Gateway (cloud inference — tier-mapped NVIDIA Nemotron) ────────
 
 class NIMGateway:
     """
     NVIDIA NIM (Inference Microservices) cloud API gateway.
     OpenAI-compatible endpoint at integrate.api.nvidia.com.
-    Tier mapping: LITE→8B, FLASH→70B, PRO→405B Llama 3.1.
+    Tier mapping: LITE → Nemotron Mini 4B, FLASH/PRO → Nemotron Super 49B
+    (the Ultra 253B Function is currently offline on build.nvidia.com).
     Auth via NIM_API_KEY (https://build.nvidia.com → API Keys).
     """
 
