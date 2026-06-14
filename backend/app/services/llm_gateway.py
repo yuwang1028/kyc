@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 
 _OLLAMA_TIMEOUT  = 180.0
 _VERTEX_TIMEOUT  = 60.0
+# NIM Nemotron 70B can take 60-150s per call (reasoning + JSON mode); give
+# the read enough head-room so the workflow doesn't spuriously fall back to
+# rules-only.
+_NIM_TIMEOUT     = 180.0
 _MAX_RETRIES     = 2
 _RETRY_BACKOFF   = 1.0
 _CB_THRESHOLD    = 5
@@ -751,7 +755,7 @@ class NIMGateway:
         }
 
         t0 = time.perf_counter()
-        with httpx.Client(timeout=_VERTEX_TIMEOUT) as client:
+        with httpx.Client(timeout=_NIM_TIMEOUT) as client:
             for attempt in range(_MAX_RETRIES + 1):
                 if _nim_cb.is_open():
                     raise RuntimeError("LLM circuit breaker is open (nim).")
