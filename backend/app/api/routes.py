@@ -64,8 +64,11 @@ from app.services.serialize import dump_model, json_safe
 from app.services.workflow import schedule_review_cycle
 from app.services.workflow_runner import execute_workflow_task, get_or_create_workflow_run
 
+from app.api.cert_routes import router as cert_router
+
 router = APIRouter()
 router.include_router(llm_router)
+router.include_router(cert_router)
 
 
 def _create_agent_run(

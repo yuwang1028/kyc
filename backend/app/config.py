@@ -76,6 +76,9 @@ class Settings(BaseModel):
 
     llm_gateway_admin_key: str | None = os.getenv("LLM_GATEWAY_ADMIN_KEY") or None
 
+    # Secret used to HMAC-sign decision certificates. Override in production.
+    cert_signing_key: str = os.getenv("CERT_SIGNING_KEY", "cosmos-dev-signing-key-change-me")
+
     upload_dir_name: str = os.getenv("UPLOAD_DIR", "uploads")
     max_upload_bytes: int = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
 
