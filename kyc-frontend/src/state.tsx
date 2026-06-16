@@ -5,7 +5,8 @@ export type View =
   | { kind: "cases" }
   | { kind: "case"; id: string }
   | { kind: "intake" }
-  | { kind: "tasks" };
+  | { kind: "tasks" }
+  | { kind: "audit" };
 
 type Ctx = {
   view: View;

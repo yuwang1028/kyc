@@ -47,7 +47,7 @@ function buildSections(caseCount: number | null): Section[] {
       title: "Tasks",
       items: [
         { label: "Tasks", icon: ClipboardList, view: { kind: "tasks" } },
-        { label: "Audit log", icon: FileText, comingSoon: true, badge: { kind: "soon" } },
+        { label: "Audit log", icon: FileText, view: { kind: "audit" } },
       ],
     },
     {

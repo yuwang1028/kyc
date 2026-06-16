@@ -5,6 +5,7 @@ import { Cases } from "@/views/Cases";
 import { CaseDetail } from "@/views/CaseDetail";
 import { Intake } from "@/views/Intake";
 import { Tasks } from "@/views/Tasks";
+import { AuditLog } from "@/views/AuditLog";
 
 function Router() {
   const { view } = useApp();
@@ -14,6 +15,7 @@ function Router() {
     case "case": return <CaseDetail id={view.id} />;
     case "intake": return <Intake />;
     case "tasks": return <Tasks />;
+    case "audit": return <AuditLog />;
   }
 }
 

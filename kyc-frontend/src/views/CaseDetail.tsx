@@ -7,9 +7,10 @@ import { AIDot } from "@/components/ai/AIDot";
 import { SpringIn } from "@/components/ai/SpringIn";
 import { StaggerList } from "@/components/ai/StaggerList";
 import { StreamingText } from "@/components/ai/StreamingText";
-import { api, type ApiCaseDetail, type WorkflowRunStatus, type LLMProviderSettings, type LLMInfraStatus } from "@/lib/api";
+import { api, type ApiCaseDetail, type WorkflowRunStatus, type LLMProviderSettings, type LLMInfraStatus, type Certificate, type CertificateVerification } from "@/lib/api";
 import {
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   FileText,
   Activity,
@@ -1438,54 +1439,164 @@ function Decision({ detail, onRefresh }: { detail: ApiCaseDetail; onRefresh: () 
   }
 
   return (
-    <Panel eyebrow="Final action" title="Record decision" action={<Gavel size={14} className="text-surface-deep" />}>
-      {latest && (
-        <div className="mb-4 px-4 py-3 bg-surface-fog rounded-md text-[13px]">
-          Latest decision: <b>{latest.decision_type}</b>
-          {latest.decision_notes && <> · {latest.decision_notes}</>}
-          <span className="text-mute ml-2">{new Date(latest.created_at).toLocaleString()}</span>
+    <div className="space-y-3">
+      <Panel eyebrow="Final action" title="Record decision" action={<Gavel size={14} className="text-surface-deep" />}>
+        {latest && (
+          <div className="mb-4 px-4 py-3 bg-surface-fog rounded-md text-[13px]">
+            Latest decision: <b>{latest.decision_type}</b>
+            {latest.decision_notes && <> · {latest.decision_notes}</>}
+            <span className="text-mute ml-2">{new Date(latest.created_at).toLocaleString()}</span>
+          </div>
+        )}
+        <div className="grid grid-cols-3 gap-3">
+          <button
+            onClick={() => decide("approved")}
+            disabled={busy}
+            className="ui-pill text-left bg-white border border-divider rounded-md p-4 hover:border-surface-deep disabled:opacity-50"
+          >
+            <CheckCircle2 size={20} className="text-surface-deep mb-2" />
+            <div className="text-[14px] font-bold">Approve</div>
+            <div className="text-[12px] text-mute mt-1">Onboarding completes, monitoring engaged.</div>
+            {busy && chosen === "approved" && <div className="text-[11px] text-mute mt-1">Recording…</div>}
+          </button>
+          <button
+            onClick={() => decide("edd")}
+            disabled={busy}
+            className="ui-pill text-left bg-white border border-divider rounded-md p-4 hover:border-surface-deep disabled:opacity-50"
+          >
+            <AlertTriangle size={20} className="text-surface-deep mb-2" />
+            <div className="text-[14px] font-bold">Escalate to EDD</div>
+            <div className="text-[12px] text-mute mt-1">Open EDD checklist · assign specialist.</div>
+          </button>
+          <button
+            onClick={() => decide("rejected")}
+            disabled={busy}
+            className="ui-pill text-left bg-white border border-divider rounded-md p-4 hover:border-mark-red disabled:opacity-50"
+          >
+            <XCircle size={20} className="text-mark-red mb-2" />
+            <div className="text-[14px] font-bold">Reject</div>
+            <div className="text-[12px] text-mute mt-1">Decline onboarding, log to SAR queue.</div>
+          </button>
+        </div>
+        <div className="mt-4">
+          <div className="text-[11px] uppercase tracking-[0.08em] font-medium text-mute mb-1">Decision notes</div>
+          <textarea
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Optional analyst rationale…"
+            className="w-full px-3 py-2 bg-surface-fog rounded-md text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-surface-deep"
+          />
+        </div>
+      </Panel>
+
+      <CertificationPanel detail={detail} />
+    </div>
+  );
+}
+
+/* ── Certification ────────────────────────────────────────────────── */
+function CertificationPanel({ detail }: { detail: ApiCaseDetail }) {
+  const [cert, setCert] = React.useState<Certificate | null>(null);
+  const [verification, setVerification] = React.useState<CertificateVerification | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  async function issue() {
+    setBusy(true); setErr(null);
+    try {
+      const c = await api.certifyCase(detail.case.id);
+      setCert(c);
+      const v = await api.verifyCertificate(c.certificate_id);
+      setVerification(v);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reVerify() {
+    if (!cert) return;
+    try {
+      const v = await api.verifyCertificate(cert.certificate_id);
+      setVerification(v);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  return (
+    <Panel eyebrow="Certification" title="Decision certificate" action={<ShieldCheck size={14} className="text-surface-deep" />}>
+      <p className="text-[13px] text-mute mb-3">
+        Issues a signed (HMAC-SHA256) certificate over this case's audit trail.
+        The audit hash chain root locks the state at issuance — any later tampering with the audit history breaks verification.
+      </p>
+
+      <div className="flex items-center gap-3">
+        <PillButton variant="primary" size="sm" arrow onClick={issue} disabled={busy}>
+          {busy ? "Issuing…" : (cert ? "Re-issue certificate" : "Issue certificate")}
+        </PillButton>
+        {cert && (
+          <PillButton variant="mint" size="sm" onClick={reVerify} disabled={busy}>
+            <RefreshCw size={12} /> Re-verify
+          </PillButton>
+        )}
+        {err && <span className="text-[13px] text-mark-red">{err}</span>}
+      </div>
+
+      {cert && (
+        <div className="mt-4 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {verification?.verified ? (
+              <StatusPill label="verified" kind="ok" />
+            ) : verification ? (
+              <StatusPill label="tampered" kind="critical" />
+            ) : (
+              <StatusPill label="checking…" kind="neutral" />
+            )}
+            <StatusPill label={`signature ${verification?.signature_valid ? "✓" : "?"}`} kind={verification?.signature_valid ? "ok" : "neutral"} />
+            <StatusPill label={`hash chain ${verification?.chain_intact ? "intact" : "?"}`} kind={verification?.chain_intact ? "ok" : "neutral"} />
+            <StatusPill label={`${cert.audit_event_count} events`} kind="neutral" />
+          </div>
+
+          <div className="bg-surface-fog/50 border border-divider rounded-md p-4 text-[12px] space-y-1.5">
+            <div className="grid grid-cols-[140px_1fr] gap-y-1.5">
+              <span className="text-mute">certificate_id</span>
+              <span className="font-mono text-[11px] break-all">{cert.certificate_id}</span>
+              <span className="text-mute">issuer</span>
+              <span>{cert.issuer}</span>
+              <span className="text-mute">workflow</span>
+              <span>{cert.workflow}</span>
+              <span className="text-mute">decision</span>
+              <span className="font-medium">{cert.decision}</span>
+              <span className="text-mute">policy_pack</span>
+              <span>{cert.policy_pack_version}</span>
+              <span className="text-mute">issued_at</span>
+              <span>{new Date(cert.issued_at).toLocaleString()}</span>
+              <span className="text-mute">audit_root</span>
+              <span className="font-mono text-[11px] break-all">{cert.audit_root}</span>
+              <span className="text-mute">signature</span>
+              <span className="font-mono text-[11px] break-all">{cert.signature}</span>
+            </div>
+
+            <div className="pt-2">
+              <div className="text-[11px] uppercase tracking-[0.06em] text-mute mb-1">Model fingerprint</div>
+              <div className="bg-white border border-divider rounded-md p-3 font-mono text-[11px] space-y-0.5">
+                {Object.entries(cert.model_fingerprint).map(([agent, model]) => (
+                  <div key={agent} className="flex justify-between gap-2">
+                    <span className="text-mute">{String(agent)}</span>
+                    <span className="truncate">{String(model)}</span>
+                  </div>
+                ))}
+                {Object.keys(cert.model_fingerprint).length === 0 && (
+                  <span className="text-mute">No agent runs recorded yet.</span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-3">
-        <button
-          onClick={() => decide("approved")}
-          disabled={busy}
-          className="ui-pill text-left bg-white border border-divider rounded-md p-4 hover:border-surface-deep disabled:opacity-50"
-        >
-          <CheckCircle2 size={20} className="text-surface-deep mb-2" />
-          <div className="text-[14px] font-bold">Approve</div>
-          <div className="text-[12px] text-mute mt-1">Onboarding completes, monitoring engaged.</div>
-          {busy && chosen === "approved" && <div className="text-[11px] text-mute mt-1">Recording…</div>}
-        </button>
-        <button
-          onClick={() => decide("edd")}
-          disabled={busy}
-          className="ui-pill text-left bg-white border border-divider rounded-md p-4 hover:border-surface-deep disabled:opacity-50"
-        >
-          <AlertTriangle size={20} className="text-surface-deep mb-2" />
-          <div className="text-[14px] font-bold">Escalate to EDD</div>
-          <div className="text-[12px] text-mute mt-1">Open EDD checklist · assign specialist.</div>
-        </button>
-        <button
-          onClick={() => decide("rejected")}
-          disabled={busy}
-          className="ui-pill text-left bg-white border border-divider rounded-md p-4 hover:border-mark-red disabled:opacity-50"
-        >
-          <XCircle size={20} className="text-mark-red mb-2" />
-          <div className="text-[14px] font-bold">Reject</div>
-          <div className="text-[12px] text-mute mt-1">Decline onboarding, log to SAR queue.</div>
-        </button>
-      </div>
-      <div className="mt-4">
-        <div className="text-[11px] uppercase tracking-[0.08em] font-medium text-mute mb-1">Decision notes</div>
-        <textarea
-          rows={3}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Optional analyst rationale…"
-          className="w-full px-3 py-2 bg-surface-fog rounded-md text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-surface-deep"
-        />
-      </div>
     </Panel>
   );
 }

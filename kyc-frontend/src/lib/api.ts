@@ -269,4 +269,61 @@ export const api = {
       `/cases/${caseId}/parties`,
       { method: "POST", body: JSON.stringify(body) }
     ),
+
+  // ── Certification ──────────────────────────────────────────────
+  certifyCase: (caseId: string) =>
+    request<Certificate>(`/cases/${caseId}/certify`, { method: "POST" }),
+
+  listCertificates: () =>
+    request<Certificate[]>("/certificates"),
+
+  verifyCertificate: (certId: string) =>
+    request<CertificateVerification>(`/certificates/${certId}/verify`),
+
+  // ── Global audit feed ──────────────────────────────────────────
+  listAuditEvents: (limit = 200, eventType?: string) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (eventType) params.set("event_type", eventType);
+    return request<ApiAuditEvent[]>(`/audit/events?${params.toString()}`);
+  },
+};
+
+// ── Certification + audit types ─────────────────────────────────
+export type Certificate = {
+  certificate_id: string;
+  issuer: string;
+  case_id: string;
+  workflow: string;
+  policy_pack_version: string | null;
+  decision: string;
+  risk_level: string | null;
+  risk_score: number | null;
+  models: string[];
+  model_fingerprint: Record<string, string>;
+  audit_root: string;
+  audit_event_count: number;
+  issued_at: string;
+  signature: string;
+};
+
+export type CertificateVerification = {
+  certificate_id: string;
+  signature_valid: boolean;
+  chain_intact: boolean;
+  verified: boolean;
+  stored_root: string;
+  recomputed_root: string;
+  audit_event_count: number;
+  current_event_count: number;
+  certificate: Certificate;
+};
+
+export type ApiAuditEvent = {
+  id: string;
+  case_id: string | null;
+  actor_type: string;
+  actor_id: string | null;
+  event_type: string;
+  event_payload: Record<string, unknown> | null;
+  created_at: string;
 };

@@ -1338,6 +1338,19 @@ def list_audit_events(case_id: UUID, session: Session = Depends(get_session)):
     ).all()
 
 
+@router.get("/audit/events")
+def list_all_audit_events(
+    limit: int = 200,
+    event_type: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    """Global audit feed across all cases — newest first."""
+    stmt = select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)
+    if event_type:
+        stmt = stmt.where(AuditEvent.event_type == event_type)
+    return session.exec(stmt).all()
+
+
 @router.post("/refresh/run")
 def run_refresh_cycle(session: Session = Depends(get_session)):
     """Create refresh tasks for approved cases due for periodic review (PRD Use Case 4)."""
